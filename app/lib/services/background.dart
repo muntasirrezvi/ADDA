@@ -42,7 +42,6 @@ class BackgroundAudio {
           serviceId: 7101,
           notificationTitle: 'Adda · live',
           notificationText: text,
-          serviceTypes: [ForegroundServiceTypes.microphone],
         );
       }
     } catch (_) {

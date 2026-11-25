@@ -8,6 +8,7 @@ import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'inbox_screen.dart';
+import 'leaderboard_screen.dart';
 import 'room_screen.dart';
 import 'wallet_screen.dart';
 
@@ -33,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   late final TabController _tabs = TabController(length: 3, vsync: this);
   final _rooms = <String, List<Map<String, dynamic>>>{};
   bool _loading = true;
+  int _refreshes = 0;
   Timer? _auto;
 
   static const _tabKeys = ['hot', 'new', 'following'];
@@ -55,6 +57,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _load() async {
+    _refreshes++;
     try {
       await HomeData.load();
     } catch (_) {}
@@ -90,6 +93,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen()));
     } else if (a.startsWith('url:')) {
       launchUrl(Uri.parse(a.substring(4)), mode: LaunchMode.externalApplication);
+    } else if (a == 'leaderboard') {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const LeaderboardScreen()));
     } else if (a == 'events') {
       _tabs.animateTo(0);
     }
@@ -106,6 +111,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final top = <Widget>[];
     for (final s in layout) {
       if (s == 'banners' && banners.isNotEmpty) top.add(SliverToBoxAdapter(child: _Banners(banners: banners, onTap: _banner)));
+      if (s == 'banners') top.add(SliverToBoxAdapter(child: LeaderboardStrip(key: ValueKey(_refreshes))));
       if (s == 'events' && events.isNotEmpty) top.add(SliverToBoxAdapter(child: _Events(events: events, onChanged: _load)));
     }
 
