@@ -56,3 +56,55 @@ jobs:
         with:
           name: adda-apk
           path: app/build/app/outputs/flutter-apk/app-*-release.apk
+
+  # Sets up your live Supabase project: database changes, then the server functions.
+  # Runs only on the main branch, only after the database test passes, and only once the
+  # SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF and SUPABASE_DB_PASSWORD secrets exist.
+  deploy:
+    needs: database
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Check the deploy secrets are set
+        id: check
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$SUPABASE_DB_PASSWORD" ] || [ -z "$PROJECT_REF" ]; then
+            echo "::notice::Deploy skipped: add SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF and SUPABASE_DB_PASSWORD in Settings > Secrets and variables > Actions."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v5
+        if: steps.check.outputs.skip != 'true'
+      - uses: supabase/setup-cli@v1
+        if: steps.check.outputs.skip != 'true'
+        with: { version: latest }
+      - name: Link the project
+        if: steps.check.outputs.skip != 'true'
+        run: supabase link --project-ref "$PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+      - name: Apply database changes
+        if: steps.check.outputs.skip != 'true'
+        run: supabase db push --include-all --password "$SUPABASE_DB_PASSWORD"
+      - name: Copy server secrets from GitHub to Supabase
+        if: steps.check.outputs.skip != 'true'
+        env:
+          AGORA_APP_ID: ${{ secrets.AGORA_APP_ID }}
+          AGORA_APP_CERTIFICATE: ${{ secrets.AGORA_APP_CERTIFICATE }}
+          SSLCOMMERZ_STORE_ID: ${{ secrets.SSLCOMMERZ_STORE_ID }}
+          SSLCOMMERZ_STORE_PASSWORD: ${{ secrets.SSLCOMMERZ_STORE_PASSWORD }}
+          SSLCOMMERZ_LIVE: ${{ secrets.SSLCOMMERZ_LIVE }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          PUSH_WEBHOOK_SECRET: ${{ secrets.PUSH_WEBHOOK_SECRET }}
+        run: |
+          args=("APP_RETURN_URL=adda://wallet" "ANDROID_PACKAGE_NAME=app.adda.voice")
+          for name in AGORA_APP_ID AGORA_APP_CERTIFICATE SSLCOMMERZ_STORE_ID SSLCOMMERZ_STORE_PASSWORD SSLCOMMERZ_LIVE \
+                      GOOGLE_SERVICE_ACCOUNT_JSON FIREBASE_SERVICE_ACCOUNT_JSON PUSH_WEBHOOK_SECRET; do
+            if [ -n "${!name}" ]; then args+=("$name=${!name}"); echo "will set $name"; fi
+          done
+          supabase secrets set --project-ref "$PROJECT_REF" "${args[@]}" > /dev/null
+      - name: Deploy server functions
+        if: steps.check.outputs.skip != 'true'
+        run: supabase functions deploy --project-ref "$PROJECT_REF"
