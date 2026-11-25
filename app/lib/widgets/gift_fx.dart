@@ -75,6 +75,8 @@ class _GiftStageState extends State<GiftStage> with TickerProviderStateMixin {
   late final AnimationController _a = AnimationController(vsync: this, duration: const Duration(milliseconds: 3200));
   final _rnd = Random();
   List<_P> _ps = [];
+  String _theme = 'sparkle';
+  bool _big = false;
 
   @override
   void initState() {
@@ -94,7 +96,9 @@ class _GiftStageState extends State<GiftStage> with TickerProviderStateMixin {
     final g = widget.controller._queue.removeAt(0);
     final price = (g.gift['price'] as num?)?.toInt() ?? 0;
     final big = price >= 1000000;
-    _ps = List.generate(big ? 90 : 40, (_) => _P(_rnd));
+    _ps = List.generate(big ? 110 : 60, (_) => _P(_rnd));
+    _theme = _themeFor('${g.gift['id']}');
+    _big = big;
     _a.duration = Duration(milliseconds: big ? 4200 : 2800);
     setState(() => _now = g);
     _a.forward(from: 0);
@@ -125,19 +129,36 @@ class _GiftStageState extends State<GiftStage> with TickerProviderStateMixin {
             opacity: (fadeIn * fadeOut).clamp(0.0, 1.0),
             child: Stack(fit: StackFit.expand, children: [
               Container(decoration: BoxDecoration(gradient: RadialGradient(colors: [look.$2.first.withValues(alpha: .35), Colors.black.withValues(alpha: .55)], radius: .9))),
-              CustomPaint(painter: _Burst(_ps, t, look.$2)),
+              if (_big) CustomPaint(painter: _Rays(t, look.$2.first)),
+              CustomPaint(painter: _Burst(_ps, t, look.$2, _theme)),
               Center(
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Transform.scale(
-                    scale: .2 + .8 * scale,
-                    child: SizedBox(
-                      width: 240,
-                      height: 240,
-                      child: (anim != null && anim.endsWith('.json'))
-                          ? Lottie.network(anim, repeat: false, errorBuilder: (_, __, ___) => GiftIcon(gift: g.gift, size: 200))
-                          : (anim != null && (anim.endsWith('.webp') || anim.endsWith('.gif')))
-                              ? CachedNetworkImage(imageUrl: anim, errorWidget: (_, __, ___) => GiftIcon(gift: g.gift, size: 200))
-                              : Transform.rotate(angle: sin(t * pi * 6) * .06, child: GiftIcon(gift: g.gift, size: 200)),
+                  Transform(
+                    alignment: Alignment.center,
+                    transform: Matrix4.identity()
+                      ..setEntry(3, 2, 0.0018)
+                      ..rotateY((1 - Curves.easeOutCubic.transform((t / .4).clamp(0.0, 1.0))) * pi * 1.6 + sin(t * pi * 4) * .12)
+                      ..rotateX(sin(t * pi * 3) * .08)
+                      ..scale(.2 + .8 * scale),
+                    child: Container(
+                      decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: look.$2.first.withValues(alpha: .55), blurRadius: 60, spreadRadius: 10)]),
+                      child: SizedBox(
+                        width: 240,
+                        height: 240,
+                        child: (anim != null && anim.endsWith('.json'))
+                            ? Lottie.network(anim, repeat: false, errorBuilder: (_, __, ___) => GiftIcon(gift: g.gift, size: 200))
+                            : (anim != null && (anim.endsWith('.webp') || anim.endsWith('.gif') || anim.endsWith('.png')))
+                                ? CachedNetworkImage(imageUrl: anim, errorWidget: (_, __, ___) => GiftIcon(gift: g.gift, size: 200))
+                                : ShaderMask(
+                                    blendMode: BlendMode.srcATop,
+                                    shaderCallback: (r) => LinearGradient(
+                                      begin: Alignment(-1 + t * 4 - 1.2, -1),
+                                      end: Alignment(-1 + t * 4 - .4, 1),
+                                      colors: [Colors.transparent, Colors.white.withValues(alpha: .75), Colors.transparent],
+                                    ).createShader(r),
+                                    child: GiftIcon(gift: g.gift, size: 200),
+                                  ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -177,14 +198,55 @@ class _P {
   final int color;
 }
 
+String _themeFor(String id) {
+  if (const ['rose', 'kiss', 'perfume', 'teddy', 'ring'].contains(id)) return 'petals';
+  if (const ['dragon', 'phoenix'].contains(id)) return 'fire';
+  if (id == 'snowflake') return 'snow';
+  if (const ['firework', 'moon'].contains(id)) return 'firework';
+  return 'sparkle';
+}
+
+/// Rotating light rays behind big gifts.
+class _Rays extends CustomPainter {
+  _Rays(this.t, this.color);
+  final double t;
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final r = size.longestSide;
+    canvas.save();
+    canvas.translate(c.dx, c.dy - 30);
+    canvas.rotate(t * pi * .8);
+    final paint = Paint()..shader = RadialGradient(colors: [color.withValues(alpha: .5), color.withValues(alpha: 0)]).createShader(Rect.fromCircle(center: Offset.zero, radius: r * .6));
+    for (var i = 0; i < 12; i++) {
+      final a = i * pi / 6;
+      final path = Path()
+        ..moveTo(0, 0)
+        ..lineTo(cos(a - .09) * r, sin(a - .09) * r)
+        ..lineTo(cos(a + .09) * r, sin(a + .09) * r)
+        ..close();
+      canvas.drawPath(path, paint);
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_Rays old) => true;
+}
+
 class _Burst extends CustomPainter {
-  _Burst(this.ps, this.t, this.colors);
+  _Burst(this.ps, this.t, this.colors, [this.theme = 'sparkle']);
   final List<_P> ps;
   final double t;
   final List<Color> colors;
+  final String theme;
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (theme == 'petals') return _petals(canvas, size, const [Color(0xFFFF4D6D), Color(0xFFFF8FA3), Color(0xFFC9184A)]);
+    if (theme == 'snow') return _fall(canvas, size, const [Colors.white, Color(0xFFDDF3FF)], round: true);
+    if (theme == 'fire') return _embers(canvas, size);
     final c = size.center(Offset.zero);
     final maxR = size.shortestSide * .75;
     final palette = [...colors, C.gold];
@@ -201,6 +263,42 @@ class _Burst extends CustomPainter {
         canvas.drawRect(Rect.fromCenter(center: Offset.zero, width: p.size * 2, height: p.size), paint);
         canvas.restore();
       }
+    }
+  }
+
+  // rose petals drifting down with a sway and spin
+  void _petals(Canvas canvas, Size size, List<Color> cs) {
+    for (final p in ps) {
+      final y = -40 + (size.height + 80) * ((t * (0.6 + p.speed * .6) + p.spin) % 1.0);
+      final x = size.width * ((p.angle / (2 * pi)) + .06 * sin(t * 6 + p.angle * 3));
+      canvas.save();
+      canvas.translate(x, y);
+      canvas.rotate(t * 5 * (p.spin - .5) + p.angle);
+      final paint = Paint()..color = cs[p.color % cs.length].withValues(alpha: .9 * (1 - t * .6));
+      canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: p.size * 3.2, height: p.size * 2), paint);
+      canvas.drawOval(Rect.fromCenter(center: Offset(p.size * .4, 0), width: p.size * 1.2, height: p.size * .6), Paint()..color = Colors.white.withValues(alpha: .25));
+      canvas.restore();
+    }
+  }
+
+  void _fall(Canvas canvas, Size size, List<Color> cs, {bool round = false}) {
+    for (final p in ps) {
+      final y = -20 + (size.height + 40) * ((t * (0.4 + p.speed * .5) + p.spin) % 1.0);
+      final x = size.width * ((p.angle / (2 * pi)) + .03 * sin(t * 4 + p.angle * 5));
+      canvas.drawCircle(Offset(x, y), p.size * .9, Paint()..color = cs[p.color % cs.length].withValues(alpha: .85));
+    }
+  }
+
+  // glowing embers rising from the bottom
+  void _embers(Canvas canvas, Size size) {
+    for (final p in ps) {
+      final y = size.height + 20 - (size.height + 40) * ((t * (0.5 + p.speed * .7) + p.spin) % 1.0);
+      final x = size.width * ((p.angle / (2 * pi)) + .04 * sin(t * 8 + p.angle * 4));
+      final c = [const Color(0xFFFFD36B), const Color(0xFFFF7A1A), const Color(0xFFFF3D00)][p.color % 3];
+      canvas.drawCircle(Offset(x, y), p.size * 1.6, Paint()
+        ..color = c.withValues(alpha: .35)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6));
+      canvas.drawCircle(Offset(x, y), p.size * .7, Paint()..color = c);
     }
   }
 
