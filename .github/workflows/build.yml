@@ -34,6 +34,30 @@ jobs:
       - run: npm install
       - run: npm run build
 
+  # Publishes the admin console to GitHub Pages: https://<owner>.github.io/<repo>/
+  console-site:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    defaults: { run: { working-directory: admin } }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 22 }
+      - run: npm install
+      - name: Build the console
+        env:
+          NEXT_BASE_PATH: /${{ github.event.repository.name }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: npm run build && touch out/.nojekyll
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: admin/out
+          publish_branch: gh-pages
+          force_orphan: true
+
   android:
     runs-on: ubuntu-latest
     permissions: { contents: write }   # to publish the download link
