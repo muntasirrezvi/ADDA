@@ -150,3 +150,88 @@ select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 select rank, username, score from leaderboard('wealth','week');
 select rank, username, score from leaderboard('charm','all');
 reset role; select body, user_id is not null from room_messages where kind='system' order by id;
+-- new lucky games and party games
+reset role;
+\set ON_ERROR_STOP 1
+update wallets set coins = 100000000000 where user_id in ('00000000-0000-0000-0000-00000000000b','00000000-0000-0000-0000-00000000000d');
+update profiles set games_ok_at = now();
+insert into room_members(room_id, user_id) select r.id, u from (select min(id) id from rooms) r,
+  unnest(array['00000000-0000-0000-0000-00000000000c','00000000-0000-0000-0000-00000000000d']::uuid[]) u on conflict do nothing;
+update room_seats set user_id = null where user_id in ('00000000-0000-0000-0000-00000000000c','00000000-0000-0000-0000-00000000000d');
+insert into room_seats(room_id, seat, user_id) select (select min(id) from rooms), 1, '00000000-0000-0000-0000-00000000000c'
+  on conflict (room_id, seat) do update set user_id = excluded.user_id;
+insert into room_seats(room_id, seat, user_id) select (select min(id) from rooms), 2, '00000000-0000-0000-0000-00000000000d'
+  on conflict (room_id, seat) do update set user_id = excluded.user_id;
+select min(id) as rid from rooms \gset
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+select play_game('fruit', 0, '{"bets":{"apple":10000,"banana":10000}}');
+select play_game('gems', 10000, '{"gem":"ruby"}');
+select play_game('wheel', 10000);
+do $$ declare g text; i int; begin
+  foreach g in array array['fruit','gems','wheel'] loop
+    for i in 1..300 loop
+      perform play_game(g, 10000, case g when 'fruit' then '{"bets":{"apple":2500,"grape":2500,"cherry":2500,"banana":2500}}'::jsonb when 'gems' then '{"gem":"topaz"}'::jsonb else '{}'::jsonb end);
+    end loop; end loop; end $$;
+reset role;
+select game, count(*), round(sum(payout)::numeric / sum(bet), 3) as rtp from game_plays group by 1 order by 1;
+-- spin the bottle
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+select kind, status, state ? 'target' as has_target from party_create(:rid, 'bottle');
+-- lucky bag: d sends 100000 for 3 people; b, c, d grab
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
+select id as bag from party_create(:rid, 'luckybag', '{"total":100000,"count":3}') \gset
+select luckybag_grab(:bag);
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+select luckybag_grab(:bag);
+select luckybag_grab(:bag);
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+select luckybag_grab(:bag);
+select sum(amount) = 100000 as bag_ok, count(*) from luckybag_grabs where game_id = :bag;
+-- tic-tac-toe: c (X) beats d (O) on the top row
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+select id as t from party_create(:rid, 'ttt', '{"stake":10000}') \gset
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
+select status from party_join(:t);
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');  select (party_move(:t, '{"cell":0}')).state->'board';
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');  select (party_move(:t, '{"cell":4}')).state->'turn';
+\set ON_ERROR_STOP 0
+select party_move(:t, '{"cell":5}');
+\set ON_ERROR_STOP 1
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');  select (party_move(:t, '{"cell":1}')).status;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');  select (party_move(:t, '{"cell":8}')).status;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');  select g.status, g.winner, g.state->'line', g.state->'prize' from party_move(:t, '{"cell":2}') g;
+-- rock paper scissors (one draw, then paper beats rock)
+select id as r from party_create(:rid, 'rps', '{"stake":0}') \gset
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');  select status from party_join(:r);
+select (party_move(:r, '{"hand":"rock"}')).state->'moved';
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');  select (party_move(:r, '{"hand":"rock"}')).state->'round';
+select (party_move(:r, '{"hand":"paper"}')).status;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');  select g.status, g.winner, g.state->'history' from party_move(:r, '{"hand":"rock"}') g;
+-- PK between c and d
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+select id as pk from party_create(:rid, 'pk', jsonb_build_object('a','00000000-0000-0000-0000-00000000000c','b','00000000-0000-0000-0000-00000000000d','minutes',1)) \gset
+select pk_scores(:pk);
+-- ludo: two players play to the end with random rolls
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+select id as lu from party_create(:rid, 'ludo', '{"stake":10000,"players":2}') \gset
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');  select status, state->'colors' from party_join(:lu);
+reset role;
+grant select on room_games to authenticated;
+do $$ declare g room_games; who uuid; n int := 0; begin
+  loop
+    select * into g from room_games where id = (select max(id) from room_games where kind = 'ludo');
+    exit when g.status <> 'playing' or n > 5000;
+    who := g.players[(g.state->>'turn')::int + 1];
+    perform set_config('request.jwt.claim.sub', who::text, true);
+    if (g.state->>'rolled')::boolean then
+      perform party_move(g.id, jsonb_build_object('action','move','token', (g.state->'movable'->>0)::int));
+    else
+      perform party_move(g.id, '{"action":"roll"}');
+    end if;
+    n := n + 1;
+  end loop;
+  raise notice 'ludo finished after % actions, status %', n, g.status;
+end $$;
+select status, winner is not null as has_winner, state->'tokens', state->'prize' from room_games where kind = 'ludo';
+select kind, status from room_games order by id;
+select u.username, w.coins from wallets w join profiles u on u.id=w.user_id order by u.public_id;

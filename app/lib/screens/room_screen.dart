@@ -14,6 +14,7 @@ import '../widgets/common.dart';
 import '../widgets/gift_fx.dart';
 import 'create_room.dart';
 import 'games.dart';
+import 'party_games.dart';
 import 'profile_screen.dart';
 import 'wallet_screen.dart';
 
@@ -409,6 +410,7 @@ class _RoomScreenState extends State<RoomScreen> {
           ]),
         ),
         Positioned(left: 0, right: 0, top: MediaQuery.of(context).padding.top + 120, child: _EntryBanners(rows: _entries)),
+        if (_r != null) Positioned.fill(child: PartyLayer(key: ValueKey('party${_r!.id}'), room: _r!)),
         if (_r != null) Positioned.fill(child: GiftStage(controller: _r!.stage)),
       ]),
     );
