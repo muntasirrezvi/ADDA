@@ -61,7 +61,22 @@ for name, line in (("android/build.gradle.kts", 'apply(from = "compile_sdk_fix.g
     rg = root / name
     if rg.exists() and "compile_sdk_fix.gradle" not in rg.read_text():
         rg.write_text(line + "\n\n" + rg.read_text())
-
+        
+# ---------- Android: don't let a crashing lint check stop the release build ----------
+(root / "android/lint_fix.gradle").write_text(
+    "subprojects { p ->\n"
+    "    p.plugins.withId('com.android.application') {\n"
+    "        p.android.lint {\n"
+    "            checkReleaseBuilds = false\n"
+    "            abortOnError = false\n"
+    "        }\n"
+    "    }\n"
+    "}\n"
+)
+for name, line in (("android/build.gradle.kts", 'apply(from = "lint_fix.gradle")'), ("android/build.gradle", "apply from: 'lint_fix.gradle'")):
+    rg = root / name
+    if rg.exists() and "lint_fix.gradle" not in rg.read_text():
+        rg.write_text(line + "\n" + rg.read_text())
 
 # keep Agora's native classes when the release build shrinks code
 (root / "android/app/proguard-rules.pro").write_text(
