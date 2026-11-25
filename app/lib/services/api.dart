@@ -116,7 +116,13 @@ class App {
   /// New notifications as they arrive (the shell shows a banner).
   final notifications = StreamController<Map<String, dynamic>>.broadcast();
 
+  /// Called before signing out (set by the room service to leave any active room).
+  Future<void> Function()? beforeSignOut;
+
   Future<void> signOut() async {
+    try {
+      await beforeSignOut?.call();
+    } catch (_) {}
     if (_ch != null) await db.removeChannel(_ch!);
     _ch = null;
     me.value = null;

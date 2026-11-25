@@ -26,6 +26,8 @@ class RtcSession {
   final remotes = ValueNotifier<Set<int>>({});
   final connected = ValueNotifier<bool>(false);
   final micOn = ValueNotifier<bool>(true);
+  final Map<int, DateTime> _lastHeard = {};
+  Timer? _prune;
 
   Future<Map<String, dynamic>> _token() async {
     final r = await App.i.fn('agora-token', {'kind': kind, 'id': id});
@@ -50,18 +52,22 @@ class RtcSession {
       onUserJoined: (connection, remoteUid, elapsed) => remotes.value = {...remotes.value, remoteUid},
       onUserOffline: (connection, remoteUid, reason) => remotes.value = {...remotes.value}..remove(remoteUid),
       onAudioVolumeIndication: (connection, speakers, speakerNumber, totalVolume) {
-        final now = <int>{};
+        // keep someone marked as talking for a moment after their last sound, so the animation is smooth
+        final now = DateTime.now();
         for (final s in speakers) {
-          if ((s.volume ?? 0) > 18) now.add(s.uid ?? 0);
+          final local = (s.uid ?? 0) == 0;
+          if ((s.volume ?? 0) > 8 || (local && (s.vad ?? 0) == 1 && (s.volume ?? 0) > 3)) _lastHeard[s.uid ?? 0] = now;
         }
-        if (!setEquals(now, talking.value)) talking.value = now;
+        _lastHeard.removeWhere((_, t) => now.difference(t).inMilliseconds > 700);
+        final set = _lastHeard.keys.toSet();
+        if (!setEquals(set, talking.value)) talking.value = set;
       },
       onTokenPrivilegeWillExpire: (connection, token) => refresh(),
       onConnectionStateChanged: (connection, state, reason) => connected.value = state == ConnectionStateType.connectionStateConnected,
     ));
     await e.enableAudio();
     await e.setAudioProfile(profile: AudioProfileType.audioProfileMusicStandard, scenario: AudioScenarioType.audioScenarioChatroom);
-    await e.enableAudioVolumeIndication(interval: 300, smooth: 3, reportVad: true);
+    await e.enableAudioVolumeIndication(interval: 250, smooth: 3, reportVad: true);
     if (video) {
       await e.enableVideo();
       await e.startPreview();
@@ -81,6 +87,12 @@ class RtcSession {
       ),
     );
     engine = e;
+    _prune = Timer.periodic(const Duration(milliseconds: 300), (_) {
+      final now = DateTime.now();
+      _lastHeard.removeWhere((_, t) => now.difference(t).inMilliseconds > 700);
+      final set = _lastHeard.keys.toSet();
+      if (!setEquals(set, talking.value)) talking.value = set;
+    });
   }
 
   /// Ask for a fresh token (after taking or leaving a seat, or before expiry) and switch role.
@@ -109,6 +121,7 @@ class RtcSession {
   Future<void> setCamera(bool on) async => engine?.muteLocalVideoStream(!on);
 
   Future<void> stop() async {
+    _prune?.cancel();
     final e = engine;
     engine = null;
     if (e == null) return;

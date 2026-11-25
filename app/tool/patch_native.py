@@ -19,11 +19,18 @@ perms = [
     "android.permission.READ_MEDIA_IMAGES",
     "android.permission.READ_MEDIA_VIDEO",
     "com.android.vending.BILLING",
+    "android.permission.FOREGROUND_SERVICE",
+    "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+    "android.permission.POST_NOTIFICATIONS",
 ]
 add = "".join(f'    <uses-permission android:name="{p}"/>\n' for p in perms if p not in s)
 if add:
     s = s.replace("<application", add + "    <application", 1)
 s = re.sub(r'android:label="[^"]*"', 'android:label="Adda"', s, count=1)
+# keeps voice rooms and calls running when the app is in the background
+if "flutter_foreground_task.service.ForegroundService" not in s:
+    s = s.replace("</application>", '        <service android:name="com.pravera.flutter_foreground_task.service.ForegroundService"\n'
+                  '            android:foregroundServiceType="microphone" android:exported="false" />\n    </application>', 1)
 intents = (
     '        <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="https"/></intent>\n'
     '        <intent><action android:name="android.intent.action.SENDTO"/><data android:scheme="mailto"/></intent>\n'
@@ -93,6 +100,8 @@ if plist.exists():
         "NSPhotoLibraryUsageDescription": "Adda uses your photos for your profile picture, room covers and payment screenshots.",
     }
     extra = "".join(f"\t<key>{k}</key>\n\t<string>{v}</string>\n" for k, v in keys.items() if k not in p)
+    if "UIBackgroundModes" not in p:
+        extra += "\t<key>UIBackgroundModes</key>\n\t<array>\n\t\t<string>audio</string>\n\t\t<string>voip</string>\n\t</array>\n"
     if extra:
         p = p.replace("<dict>", "<dict>\n" + extra, 1)
     p = re.sub(r"(<key>CFBundleDisplayName</key>\s*<string>)[^<]*(</string>)", r"\1Adda\2", p)

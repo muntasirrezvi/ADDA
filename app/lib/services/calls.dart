@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'active_room.dart';
 import 'api.dart';
 import 'rtc.dart';
 
@@ -107,6 +108,8 @@ class _CallScreenState extends State<CallScreen> {
 
   Future<void> _join() async {
     if (_rtc != null) return;
+    // a phone can only run one voice session: leave any room first
+    await ActiveRoom.current.value?.leave();
     final s = RtcSession(kind: 'call', id: _id, video: _video);
     _rtc = s;
     try {

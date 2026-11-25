@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -6,12 +7,14 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/active_room.dart';
 import '../services/api.dart';
 import '../services/rtc.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/gift_fx.dart';
 import 'create_room.dart';
+import 'games.dart';
 import 'profile_screen.dart';
 import 'wallet_screen.dart';
 
@@ -52,170 +55,80 @@ class RoomScreen extends StatefulWidget {
 }
 
 class _RoomScreenState extends State<RoomScreen> {
-  Map<String, dynamic>? _room;
-  List<Map<String, dynamic>> _seats = [];
-  final List<Map<String, dynamic>> _msgs = [];
-  List<Map<String, dynamic>> _gifts = [];
-  String? _themeImage;
-  bool _isAdmin = false;
-  bool _following = false;
+  static final _noTalk = ValueNotifier<Set<int>>(<int>{});
+  ActiveRoom? _r;
   String? _error;
-  RtcSession? _rtc;
-  RealtimeChannel? _ch;
-  Timer? _poll;
-  final _stage = GiftStageController();
   final _scroll = ScrollController();
   final _input = TextEditingController();
-  String _lastGiftKey = '';
-  DateTime _lastGiftAt = DateTime(2000);
+  StreamSubscription<Map<String, dynamic>>? _joinSub;
+  final List<Map<String, dynamic>> _entries = [];
+  int _lastLen = 0;
 
   int get _id => widget.roomId;
+  Map<String, dynamic>? get _room => _r?.room;
+  List<Map<String, dynamic>> get _seats => _r?.seats ?? const [];
+  List<Map<String, dynamic>> get _msgs => _r?.msgs ?? const [];
+  List<Map<String, dynamic>> get _gifts => _r?.gifts ?? const [];
+  String? get _themeImage => _r?.themeImage;
+  bool get _isAdmin => _r?.isAdmin ?? false;
+  bool get _following => _r?.following ?? false;
+  RtcSession? get _rtc => _r?.rtc;
   bool get _isOwner => _room?['owner_id'] == myId;
   Map<String, dynamic>? get _mySeat => _seats.where((s) => s['user_id'] == myId).firstOrNull;
 
   @override
   void initState() {
     super.initState();
-    _enter();
+    ActiveRoom.screenOpen.value = true;
+    _open();
   }
 
-  Future<void> _enter({String? password}) async {
+  Future<void> _open({String? password}) async {
     try {
-      final r = await App.i.rpc('join_room', {'p_room': _id, 'p_password': password});
-      _room = Map<String, dynamic>.from(r as Map);
+      _attach(await ActiveRoom.enter(_id, password: password));
+    } on RoomPasswordNeeded {
+      if (!mounted) return;
+      final pw = await askText(context, 'Private room', hint: 'Room password', number: true, obscure: true);
+      if (pw != null && pw.isNotEmpty) return _open(password: pw);
+      if (mounted) Navigator.pop(context);
     } catch (e) {
-      final msg = errText(e);
-      if (msg.toLowerCase().contains('wrong password') && mounted) {
-        final pw = await askText(context, 'Private room', hint: 'Room password', number: true, obscure: true);
-        if (pw != null && pw.isNotEmpty) return _enter(password: pw);
-        if (mounted) Navigator.pop(context);
-        return;
-      }
-      if (mounted) setState(() => _error = msg);
-      return;
-    }
-    await Future.wait([_loadSeats(), _loadMessages(), _loadGifts(), _loadExtras()]);
-    _subscribe();
-    _poll = Timer.periodic(const Duration(seconds: 30), (_) => _refreshRoom());
-    if (mounted) setState(() {});
-    // voice: start as listener; the owner starts on the host seat
-    final s = RtcSession(kind: 'room', id: '$_id');
-    _rtc = s;
-    try {
-      if (_isOwner) await Permission.microphone.request();
-      await s.start();
-      if (mounted) setState(() {});
-    } catch (e) {
-      if (mounted) toast(context, 'Voice is unavailable: ${errText(e)}', bad: true);
+      if (mounted) setState(() => _error = errText(e));
     }
   }
 
-  Future<void> _refreshRoom() async {
-    final r = await db.from('rooms').select('id, owner_id, name, topic, language, announcement, cover_url, cover_template, theme, seats, locked, status, listeners, score_today').eq('id', _id).maybeSingle();
+  void _attach(ActiveRoom r) {
     if (!mounted) return;
-    if (r == null || r['status'] != 'open') {
-      toast(context, 'This room has closed');
-      Navigator.pop(context);
-      return;
-    }
-    setState(() => _room = r);
-  }
-
-  Future<void> _loadSeats() async {
-    final rows = await db.from('room_seats').select().eq('room_id', _id).order('seat');
-    _seats = List<Map<String, dynamic>>.from(rows);
-    await Profiles.load(_seats.map((s) => s['user_id'] as String?));
-    final m = await db.from('room_members').select('role').eq('room_id', _id).eq('user_id', myId!).maybeSingle();
-    _isAdmin = _isOwner || m?['role'] == 'admin' || App.i.me.value?['role'] == 'admin' || App.i.me.value?['role'] == 'moderator';
-  }
-
-  Future<void> _loadMessages() async {
-    final rows = await db.from('room_messages').select().eq('room_id', _id).order('id', ascending: false).limit(50);
-    _msgs
-      ..clear()
-      ..addAll(List<Map<String, dynamic>>.from(rows).reversed);
-    await Profiles.load(_msgs.map((m) => m['user_id'] as String?));
+    _r = r;
+    r.addListener(_changed);
+    r.closedReason.addListener(_closed);
+    _joinSub = r.joins.stream.listen(_showEntry);
+    setState(() {});
     _toBottom();
+    if (r.voiceError != null) toast(context, 'Voice is unavailable: ${r.voiceError}', bad: true);
   }
 
-  Future<void> _loadGifts() async {
-    final rows = await db.from('gifts').select().eq('active', true).order('sort');
-    final now = DateTime.now();
-    _gifts = List<Map<String, dynamic>>.from(rows).where((g) {
-      final s = DateTime.tryParse('${g['starts_at']}');
-      final e = DateTime.tryParse('${g['ends_at']}');
-      return (s == null || s.isBefore(now)) && (e == null || e.isAfter(now));
-    }).toList();
-  }
-
-  Future<void> _loadExtras() async {
-    final theme = _room?['theme'];
-    final t = await db.from('room_themes').select('image_url').eq('id', theme ?? '').maybeSingle();
-    _themeImage = t?['image_url'] as String?;
-    final f = await db.from('room_follows').select('room_id').eq('room_id', _id).eq('user_id', myId!).maybeSingle();
-    _following = f != null;
-  }
-
-  void _subscribe() {
-    PostgresChangeFilter byRoom() => PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'room_id', value: _id);
-    _ch = db
-        .channel('room:$_id')
-        .onPostgresChanges(event: PostgresChangeEvent.update, schema: 'public', table: 'room_seats', filter: byRoom(), callback: (p) => _onSeat(p.newRecord))
-        .onPostgresChanges(event: PostgresChangeEvent.insert, schema: 'public', table: 'room_messages', filter: byRoom(), callback: (p) => _onMessage(p.newRecord))
-        .onPostgresChanges(event: PostgresChangeEvent.insert, schema: 'public', table: 'gift_events', filter: byRoom(), callback: (p) => _onGift(p.newRecord))
-        .subscribe();
-  }
-
-  Future<void> _onSeat(Map<String, dynamic> row) async {
-    final wasMine = _mySeat?['seat'] == row['seat'];
-    await Profiles.load([row['user_id'] as String?]);
+  void _changed() {
     if (!mounted) return;
-    setState(() {
-      final i = _seats.indexWhere((s) => s['seat'] == row['seat']);
-      if (i >= 0) {
-        _seats[i] = row;
-      } else {
-        _seats.add(row);
-      }
+    setState(() {});
+    if (_msgs.length != _lastLen) {
+      _lastLen = _msgs.length;
+      _toBottom();
+    }
+  }
+
+  void _closed() {
+    final why = _r?.closedReason.value;
+    if (why == null || !mounted) return;
+    toast(context, why);
+    Navigator.of(context).maybePop();
+  }
+
+  void _showEntry(Map<String, dynamic> row) {
+    if (!mounted) return;
+    setState(() => _entries.add(row));
+    Future.delayed(const Duration(milliseconds: 3600), () {
+      if (mounted) setState(() => _entries.remove(row));
     });
-    final mineNow = row['user_id'] == myId;
-    if (wasMine && !mineNow) {
-      toast(context, 'You are off the mic');
-      _rtc?.refresh();
-    } else if (mineNow && row['muted'] == true) {
-      _rtc?.setMic(false);
-      _rtc?.refresh();
-    }
-  }
-
-  Future<void> _onMessage(Map<String, dynamic> row) async {
-    await Profiles.load([row['user_id'] as String?]);
-    if (!mounted) return;
-    setState(() => _msgs.add(row));
-    if (_msgs.length > 200) _msgs.removeRange(0, _msgs.length - 200);
-    _toBottom();
-    if (row['kind'] == 'system' && '${row['body']}'.contains('closed the room') && !_isOwner) {
-      toast(context, 'The host closed the room');
-      Navigator.pop(context);
-    }
-  }
-
-  Future<void> _onGift(Map<String, dynamic> row) async {
-    final g = _gifts.where((x) => x['id'] == row['gift_id']).firstOrNull;
-    if (g == null) return;
-    await Profiles.load([row['sender_id'] as String?, row['receiver_id'] as String?]);
-    // a gift to several people arrives as several rows: show it once
-    final key = '${row['sender_id']}|${row['gift_id']}|${row['qty']}';
-    if (key == _lastGiftKey && DateTime.now().difference(_lastGiftAt).inMilliseconds < 2500) return;
-    _lastGiftKey = key;
-    _lastGiftAt = DateTime.now();
-    _stage.play(GiftShow(
-      gift: g,
-      from: '${Profiles.get(row['sender_id'] as String?)?['username'] ?? 'Someone'}',
-      to: '${Profiles.get(row['receiver_id'] as String?)?['username'] ?? 'someone'}',
-      qty: (row['qty'] as num).toInt(),
-    ));
-    if (mounted) setState(() {});
   }
 
   void _toBottom() {
@@ -224,12 +137,20 @@ class _RoomScreenState extends State<RoomScreen> {
     });
   }
 
+  /// Minimise: keep talking and listening while you use the rest of the app.
+  void _minimise() => Navigator.of(context).maybePop();
+
+  Future<void> _leave() async {
+    await _r?.leave();
+    if (mounted) Navigator.of(context).maybePop();
+  }
+
   @override
   void dispose() {
-    _poll?.cancel();
-    if (_ch != null) db.removeChannel(_ch!);
-    _rtc?.stop();
-    if (_room != null) App.i.rpc('leave_room', {'p_room': _id}).catchError((_) => null);
+    ActiveRoom.screenOpen.value = false;
+    _r?.removeListener(_changed);
+    _r?.closedReason.removeListener(_closed);
+    _joinSub?.cancel();
     _scroll.dispose();
     _input.dispose();
     super.dispose();
@@ -401,14 +322,15 @@ class _RoomScreenState extends State<RoomScreen> {
             } else {
               await db.from('room_follows').insert({'room_id': _id, 'user_id': myId});
             }
-            setState(() => _following = !_following);
+            _r!.following = !_r!.following;
+            setState(() {});
           })),
       if (_isOwner)
         ('Edit room, cover and theme', Icons.edit, () async {
           final changed = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => RoomEditor(room: _room)));
           if (changed == true) {
-            await _refreshRoom();
-            await _loadExtras();
+            await _r?.refreshRoom();
+            await _r?.loadExtras();
             if (mounted) setState(() {});
           }
         }),
@@ -434,7 +356,7 @@ class _RoomScreenState extends State<RoomScreen> {
           if (!await confirm(context, 'Close the room?', 'Everyone will be sent out.', yes: 'Close', danger: true)) return;
           if (!mounted) return;
           final ok = await attempt(context, () => App.i.rpc('close_room', {'p_room': _id}));
-          if (ok && mounted) Navigator.pop(context);
+          if (ok) await _leave();
         }),
     ]);
   }
@@ -487,7 +409,8 @@ class _RoomScreenState extends State<RoomScreen> {
             _bottomBar(),
           ]),
         ),
-        Positioned.fill(child: GiftStage(controller: _stage)),
+        Positioned(left: 0, right: 0, top: MediaQuery.of(context).padding.top + 120, child: _EntryBanners(rows: _entries)),
+        if (_r != null) Positioned.fill(child: GiftStage(controller: _r!.stage)),
       ]),
     );
   }
@@ -511,7 +434,8 @@ class _RoomScreenState extends State<RoomScreen> {
           child: Row(children: [const Icon(Icons.people, size: 14), const SizedBox(width: 4), Text(compact(r['listeners'] as num? ?? 0), style: const TextStyle(fontSize: 12))]),
         ),
         IconButton(onPressed: _menu, icon: const Icon(Icons.more_horiz)),
-        IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.power_settings_new, color: C.ruby)),
+        IconButton(tooltip: 'Minimise', onPressed: _minimise, icon: const Icon(Icons.close_fullscreen)),
+        IconButton(tooltip: 'Leave room', onPressed: _leave, icon: const Icon(Icons.power_settings_new, color: C.ruby)),
       ]),
     );
   }
@@ -525,18 +449,14 @@ class _RoomScreenState extends State<RoomScreen> {
       onTap: () => _tapSeat(s),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         ValueListenableBuilder<Set<int>>(
-          valueListenable: _rtc?.talking ?? ValueNotifier<Set<int>>({}),
+          valueListenable: _rtc?.talking ?? _noTalk,
           builder: (_, talking, __) {
             final pid = (p?['public_id'] as num?)?.toInt();
-            final speaking = uid != null && ((uid == myId && talking.contains(0)) || (pid != null && talking.contains(pid)));
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: speaking ? [BoxShadow(color: C.gold.withValues(alpha: .7), blurRadius: 16, spreadRadius: 2)] : null,
-                border: Border.all(color: speaking ? C.gold : (seat == 0 ? C.gold2 : Colors.white24), width: 2),
-              ),
+            final speaking = uid != null && s['muted'] != true && ((uid == myId && talking.contains(0)) || (pid != null && talking.contains(pid)));
+            return SpeakingSeat(
+              speaking: speaking,
+              size: size,
+              host: seat == 0,
               child: uid == null
                   ? Container(
                       width: size,
@@ -544,11 +464,8 @@ class _RoomScreenState extends State<RoomScreen> {
                       decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black38),
                       child: Icon(s['locked'] == true ? Icons.lock : Icons.event_seat, color: Colors.white54, size: size * .4),
                     )
-                  : Stack(children: [
-                      Avatar(profile: p, size: size),
-                      if (s['muted'] == true)
-                        const Positioned(right: 0, bottom: 0, child: CircleAvatar(radius: 9, backgroundColor: C.ruby, child: Icon(Icons.mic_off, size: 11, color: Colors.white))),
-                    ]),
+                  : Avatar(profile: p, size: size),
+              muted: uid != null && s['muted'] == true,
             );
           },
         ),
@@ -579,7 +496,14 @@ class _RoomScreenState extends State<RoomScreen> {
           final m = _msgs[i];
           final p = Profiles.get(m['user_id'] as String?);
           if (m['kind'] == 'system') {
-            return Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Text('${m['body']}', style: const TextStyle(color: C.gold, fontSize: 12)));
+            final joined = m['body'] == 'joined the room';
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Text.rich(TextSpan(children: [
+                if (joined) TextSpan(text: '${p?['username'] ?? 'Someone'} ', style: const TextStyle(color: Color(0xFF7CF5B5), fontWeight: FontWeight.w800, fontSize: 12)),
+                TextSpan(text: '${m['body']}', style: TextStyle(color: joined ? const Color(0xFF7CF5B5) : C.gold, fontSize: 12)),
+              ])),
+            );
           }
           return Align(
             alignment: Alignment.centerLeft,
@@ -644,6 +568,8 @@ class _RoomScreenState extends State<RoomScreen> {
               _takeSeat((free['seat'] as num).toInt());
             }
           }),
+        const SizedBox(width: 8),
+        _round(Icons.sports_esports, const Color(0xFF6A3DE8), () => openGames(context, roomId: _id)),
         const SizedBox(width: 8),
         Container(
           decoration: const BoxDecoration(gradient: C.goldGrad, shape: BoxShape.circle),
@@ -790,6 +716,147 @@ class _GiftSheetState extends State<GiftSheet> {
           ),
         ]),
       ),
+    );
+  }
+}
+
+/// Seat avatar with a live "talking" animation: ripples around the avatar and a bouncing mic badge.
+class SpeakingSeat extends StatefulWidget {
+  const SpeakingSeat({super.key, required this.speaking, required this.size, required this.child, this.host = false, this.muted = false});
+  final bool speaking;
+  final double size;
+  final Widget child;
+  final bool host;
+  final bool muted;
+  @override
+  State<SpeakingSeat> createState() => _SpeakingSeatState();
+}
+
+class _SpeakingSeatState extends State<SpeakingSeat> with SingleTickerProviderStateMixin {
+  late final AnimationController _a = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.speaking) _a.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant SpeakingSeat old) {
+    super.didUpdateWidget(old);
+    if (widget.speaking && !_a.isAnimating) _a.repeat();
+    if (!widget.speaking && _a.isAnimating) {
+      _a.stop();
+      _a.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _a.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final box = widget.size + 18;
+    return SizedBox(
+      width: box,
+      height: box,
+      child: AnimatedBuilder(
+        animation: _a,
+        builder: (_, __) => Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
+          if (widget.speaking)
+            for (final k in const [0.0, 0.5])
+              Builder(builder: (_) {
+                final t = (_a.value + k) % 1.0;
+                return Container(
+                  width: widget.size + 4 + t * 16,
+                  height: widget.size + 4 + t * 16,
+                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: C.gold.withValues(alpha: (1 - t) * .8), width: 2.5)),
+                );
+              }),
+          Container(
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: widget.speaking ? C.gold : (widget.host ? C.gold2 : Colors.white24), width: 2),
+              boxShadow: widget.speaking ? [BoxShadow(color: C.gold.withValues(alpha: .55), blurRadius: 14, spreadRadius: 1)] : null,
+            ),
+            child: widget.child,
+          ),
+          if (widget.speaking || widget.muted)
+            Positioned(
+              right: 4,
+              bottom: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                decoration: BoxDecoration(color: widget.muted ? C.ruby : C.emerald, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.black54)),
+                child: widget.muted
+                    ? const Icon(Icons.mic_off, size: 11, color: Colors.white)
+                    : Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.mic, size: 11, color: Colors.white),
+                        for (var i = 0; i < 3; i++)
+                          Container(
+                            margin: const EdgeInsets.only(left: 1.5),
+                            width: 2,
+                            height: 3 + 7 * (0.5 + 0.5 * math.sin((_a.value * 2 * math.pi * 2) + i * 1.3)).abs(),
+                            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1)),
+                          ),
+                      ]),
+              ),
+            ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Colourful "… joined the room" banners that slide in over the room.
+class _EntryBanners extends StatelessWidget {
+  const _EntryBanners({required this.rows});
+  final List<Map<String, dynamic>> rows;
+  static const _grads = [
+    [Color(0xFF2A9D7F), Color(0xFF14524A)],
+    [Color(0xFF6A3DE8), Color(0xFF2E1A6E)],
+    [Color(0xFFC9506C), Color(0xFF6E1F35)],
+    [Color(0xFFF0D9A6), Color(0xFFB8924F)],
+  ];
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (final r in rows.reversed.take(3))
+          TweenAnimationBuilder<double>(
+            key: ValueKey(r['id']),
+            tween: Tween(begin: -1, end: 0),
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeOutBack,
+            builder: (_, v, child) => Transform.translate(offset: Offset(v * 300, 0), child: child),
+            child: Builder(builder: (_) {
+              final p = Profiles.get(r['user_id'] as String?);
+              final lv = (p?['wealth_level'] as num?)?.toInt() ?? 1;
+              final g = _grads[lv >= 50 ? 3 : lv >= 20 ? 2 : lv >= 10 ? 1 : 0];
+              return Container(
+                margin: const EdgeInsets.only(left: 10, bottom: 6),
+                padding: const EdgeInsets.fromLTRB(4, 4, 14, 4),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [g[0], g[1].withValues(alpha: .2)]),
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [BoxShadow(color: g[0].withValues(alpha: .5), blurRadius: 12)],
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Avatar(profile: p, size: 28),
+                  const SizedBox(width: 6),
+                  LevelBadge(lv),
+                  const SizedBox(width: 6),
+                  Text('${p?['username'] ?? 'Someone'}', style: TextStyle(fontWeight: FontWeight.w800, color: lv >= 50 ? const Color(0xFF1A1206) : Colors.white)),
+                  Text('  joined the room ✨', style: TextStyle(color: lv >= 50 ? const Color(0xFF1A1206) : Colors.white)),
+                ]),
+              );
+            }),
+          ),
+      ]),
     );
   }
 }

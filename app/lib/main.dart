@@ -12,6 +12,7 @@ import 'dart:io' show Platform;
 import 'screens/wallet_screen.dart' show PlayBilling;
 import 'services/calls.dart';
 import 'theme.dart';
+import 'widgets/room_bubble.dart';
 
 final navKey = GlobalKey<NavigatorState>();
 
@@ -36,6 +37,8 @@ class AddaApp extends StatelessWidget {
         theme: buildTheme(),
         navigatorKey: navKey,
         home: const AuthGate(),
+        // the minimised-room bubble floats above every screen
+        builder: (context, child) => Stack(fit: StackFit.expand, children: [child ?? const SizedBox(), RoomBubble(navigator: navKey)]),
       );
 }
 
