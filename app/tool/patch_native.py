@@ -44,6 +44,24 @@ for name in ("android/app/build.gradle.kts", "android/app/build.gradle"):
     t = re.sub(r'applicationId\s*=?\s*"[^"]+"', f'applicationId = "{APP_ID}"' if name.endswith(".kts") else f'applicationId "{APP_ID}"', t)
     t = re.sub(r'minSdk(Version)?\s*=?\s*(flutter\.minSdkVersion|\d+)', "minSdk = 24" if name.endswith(".kts") else "minSdkVersion 24", t)
     g.write_text(t)
+# ---------- Android: build old plugins (e.g. Agora, compiled against android-31) with a current SDK ----------
+(root / "android/compile_sdk_fix.gradle").write_text(
+    "// Added by tool/patch_native.py: some plugins still build against an old Android SDK,\n"
+    "// which newer AndroidX libraries refuse. Build every plugin with SDK 36 instead.\n"
+    "subprojects { p ->\n"
+    "    def fix = {\n"
+    "        if (p.plugins.hasPlugin('com.android.library') && p.hasProperty('android')) {\n"
+    "            p.android.compileSdkVersion 36\n"
+    "        }\n"
+    "    }\n"
+    "    if (p.state.executed) { fix() } else { p.afterEvaluate { fix() } }\n"
+    "}\n"
+)
+for name, line in (("android/build.gradle.kts", 'apply(from = "compile_sdk_fix.gradle")'), ("android/build.gradle", "apply from: 'compile_sdk_fix.gradle'")):
+    rg = root / name
+    if rg.exists() and "compile_sdk_fix.gradle" not in rg.read_text():
+        rg.write_text(line + "\n\n" + rg.read_text())
+
 
 # keep Agora's native classes when the release build shrinks code
 (root / "android/app/proguard-rules.pro").write_text(
