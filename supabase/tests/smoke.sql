@@ -118,3 +118,35 @@ select provider, amount, currency, coins, status from payments where provider='a
 select status, count(*) from topup_orders group by 1;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 select admin_stats(7)->>'revenue_usd' rev;
+reset role;
+-- games, leaderboards, join notices
+\set ON_ERROR_STOP 1
+create or replace function pg_temp.as_user(u text) returns void language plpgsql as $$ begin
+  reset role; perform set_config('request.jwt.claim.sub', u, false); execute 'set role authenticated'; end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+\set ON_ERROR_STOP 0
+select play_game('slots', 10000);
+\set ON_ERROR_STOP 1
+select accept_games();
+select my_game_status();
+reset role; update wallets set coins = 100000000000 where user_id = '00000000-0000-0000-0000-00000000000c'; update app_settings set value='1000000000000' where key='daily_game_loss_cap';
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+select play_game('greedy', 0, '{"bets":{"tomato":10000,"steak":20000}}');
+select play_game('dice', 10000, '{"side":"seven"}');
+select play_game('crash', 10000, '{"target":2}');
+\set ON_ERROR_STOP 0
+select play_game('slots', 5000);
+select play_game('greedy', 0, '{"bets":{"pizza":10000}}');
+\set ON_ERROR_STOP 1
+-- simulate return-to-player over many plays
+do $$ declare g text; i int; begin
+  foreach g in array array['greedy','slots','dice','crash'] loop
+    for i in 1..200 loop
+      perform play_game(g, 10000, case g when 'greedy' then '{"bets":{"tomato":2500,"corn":2500,"fish":2500,"chicken":2500}}'::jsonb when 'dice' then '{"side":"big"}'::jsonb when 'crash' then '{"target":2}'::jsonb else '{}'::jsonb end);
+    end loop; end loop; end $$;
+reset role;
+select game, count(*), round(sum(payout)::numeric / sum(bet), 3) as rtp from game_plays group by 1 order by 1;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select rank, username, score from leaderboard('wealth','week');
+select rank, username, score from leaderboard('charm','all');
+reset role; select body, user_id is not null from room_messages where kind='system' order by id;
