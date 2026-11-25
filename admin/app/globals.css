@@ -1,0 +1,51 @@
+:root{--bg:#0c0a09;--panel:#151210;--card:#1b1714;--line:#2c2620;--text:#f4ede1;--mute:#a39886;--gold:#d8b77a;--gold2:#b8924f;--green:#2a9d7f;--red:#c9506c;--r:14px}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "Plus Jakarta Sans",system-ui,sans-serif}
+a{color:var(--gold)}h1,h2,h3{font-family:"Bodoni Moda",Georgia,serif;font-weight:700;margin:0;letter-spacing:.2px}h1{font-size:28px}h3{font-size:19px}
+.muted{color:var(--mute)}.sm{font-size:12px}small{display:block}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:#231e19;color:var(--text);padding:9px 15px;border-radius:10px;transition:.15s;white-space:nowrap}
+button:hover{border-color:var(--gold2)}button:disabled{opacity:.5;cursor:default}
+button.gold{background:linear-gradient(135deg,#e9cf98,var(--gold2));color:#1a1206;border:0;font-weight:700}
+button.ghost{background:transparent}button.sm{padding:5px 10px;font-size:12px;border-radius:8px}button.danger{color:#f08aa0}
+button.green{background:var(--green);border-color:var(--green)}button.red{background:var(--red);border-color:var(--red)}
+input,select,textarea{font:inherit;background:#100d0b;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 12px;width:100%;min-width:0}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold)}textarea{min-height:90px;resize:vertical}input[type=color]{padding:2px;height:38px}
+.layout{display:flex;min-height:100vh}
+aside{width:240px;flex:none;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{font-family:"Bodoni Moda",serif;font-size:26px;font-weight:700;color:var(--gold);padding:22px 22px 14px}.brand span{display:block;font:600 10px "Plus Jakarta Sans";letter-spacing:3px;text-transform:uppercase;color:var(--mute)}
+nav{flex:1;overflow:auto;padding:4px 10px}nav a{display:flex;gap:11px;align-items:center;padding:9px 12px;border-radius:10px;color:var(--mute);text-decoration:none;margin-bottom:2px}
+nav a:hover{color:var(--text);background:#1d1915}nav a.on{color:var(--gold);background:linear-gradient(90deg,#2a2218,transparent)}
+.who{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:14px 18px;border-top:1px solid var(--line)}.who small{color:var(--mute);text-transform:capitalize}
+main{flex:1;min-width:0;padding:28px 32px 60px}.menu{display:none}.scrim{display:none}
+.page{max-width:1200px;margin:0 auto}.ph{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:22px;flex-wrap:wrap}.ph p{margin:4px 0 0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row.end{justify-content:flex-end}.col{display:flex;flex-direction:column;gap:6px}.mb{margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+.grid{display:grid;gap:14px}.g4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}.g2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+.stat .k{color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:1px}.stat .v{font-family:"Bodoni Moda",serif;font-size:30px;font-weight:700;margin-top:6px}.stat .v.gold{color:var(--gold)}
+.tw{padding:0;overflow:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--mute);font-weight:600;background:#17130f;position:sticky;top:0}tr:last-child td{border-bottom:0}tbody tr:hover{background:#1f1a16}
+td.act{text-align:right;white-space:nowrap}td.act button{margin-left:6px}
+.badge{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:600;background:#2a241e;color:var(--text);text-transform:capitalize}
+.badge.gold{background:#3a2e17;color:var(--gold)}.badge.green{background:#12352b;color:#6fd6b5}.badge.red{background:#3c1520;color:#f08aa0}.badge.dim{color:var(--mute)}
+.empty{padding:50px;text-align:center;color:var(--mute)}.empty.bad{color:#f08aa0}
+.modal{position:fixed;inset:0;background:#000a;display:grid;place-items:center;z-index:50;padding:16px;backdrop-filter:blur(4px)}
+.mbox{width:min(560px,100%);max-height:90vh;overflow:auto}.mbox.wide{width:min(900px,100%)}.mh{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.form{display:flex;flex-direction:column;gap:13px}.field{display:flex;flex-direction:column;gap:5px}.lbl{font-size:12px;color:var(--mute);font-weight:600}
+.imgin{display:flex;gap:14px;align-items:center}.thumb{width:84px;height:84px;border-radius:12px;background:#100d0b;border:1px dashed var(--line);display:grid;place-items:center;overflow:hidden;flex:none}.thumb img{width:100%;height:100%;object-fit:cover}
+img.mini{width:44px;height:44px;border-radius:8px;object-fit:cover;display:block}.swatch{display:inline-block;width:22px;height:22px;border-radius:6px;border:1px solid var(--line)}
+.toggle{display:inline-flex;align-items:center;gap:8px;padding:0;border:0;background:none}.toggle i{width:40px;height:22px;border-radius:99px;background:#332b23;position:relative;transition:.2s}
+.toggle i:after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;background:#bbb;top:3px;left:3px;transition:.2s}.toggle.on i{background:var(--green)}.toggle.on i:after{left:21px;background:#fff}
+.toasts{position:fixed;right:18px;bottom:18px;display:flex;flex-direction:column;gap:8px;z-index:99}.toast{background:#1f3a31;border:1px solid var(--green);padding:11px 16px;border-radius:10px;max-width:360px;animation:tin .25s}.toast.bad{background:#3c1520;border-color:var(--red)}
+@keyframes tin{from{transform:translateY(10px);opacity:0}}
+.center{min-height:100vh;display:grid;place-items:center}.spinner{width:28px;height:28px;border-radius:50%;border:3px solid #3a3027;border-top-color:var(--gold);animation:spin .8s linear infinite;margin:auto}@keyframes spin{to{transform:rotate(360deg)}}
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}.tabs button.on{border-color:var(--gold);color:var(--gold)}
+.chart{display:flex;align-items:flex-end;gap:3px;height:140px;padding-top:10px}.chart div{flex:1;background:linear-gradient(to top,var(--gold2),var(--gold));border-radius:4px 4px 0 0;min-height:2px;position:relative}
+.chart div:hover:after{content:attr(data-t);position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:#000;padding:3px 7px;border-radius:6px;font-size:11px;white-space:nowrap}
+.rcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.rc{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;display:flex;flex-direction:column}.rc.pin{border-color:var(--gold2);box-shadow:0 0 0 1px #d8b77a33}
+.rc .cv{aspect-ratio:16/10;background:linear-gradient(135deg,#3a2a1a,#120e0b);position:relative;display:grid;place-items:center;color:var(--gold);font-family:"Bodoni Moda",serif;font-size:20px}
+.rc .cv img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.rc .cv .tag{position:absolute;top:8px;left:8px}.rc .bd{padding:12px 14px;display:flex;flex-direction:column;gap:8px;flex:1}
+.rc .bd .row{justify-content:space-between}.kv{display:grid;grid-template-columns:140px 1fr;gap:6px 12px}.kv dt{color:var(--mute)}.kv dd{margin:0;word-break:break-all}
+.login{min-height:100vh;display:grid;place-items:center;padding:20px;background:radial-gradient(circle at 30% 20%,#2a1f13,transparent 50%),var(--bg)}.login .card{width:min(400px,100%);padding:30px}
+.order{display:flex;flex-direction:column;gap:6px}.order li{list-style:none;display:flex;align-items:center;gap:10px;background:#100d0b;border:1px solid var(--line);border-radius:10px;padding:8px 10px}.order li b{flex:1}.order{padding:0;margin:0}
+@media(max-width:860px){aside{position:fixed;left:0;top:0;z-index:40;transform:translateX(-100%);transition:.25s}aside.open{transform:none}
+aside.open+.scrim{display:block;position:fixed;inset:0;background:#0008;z-index:30}main{padding:18px 14px 50px}.menu{display:inline-flex;margin-bottom:10px}h1{font-size:23px}.kv{grid-template-columns:1fr}}
