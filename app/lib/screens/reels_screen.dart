@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import 'profile_screen.dart';
 import 'reel_create.dart';
+import 'reel_menu.dart';
 
 const reelSelect = '*, user:profiles!reels_user_id_fkey(id, username, avatar_url, avatar_preset), track:music_tracks(id, title, artist, audio_url)';
 
@@ -24,7 +25,9 @@ class _ReelsScreenState extends State<ReelsScreen> {
   late final PageController _pc = PageController(initialPage: widget.startIndex);
   final List<Map<String, dynamic>> _reels = [];
   final Set<String> _liked = {};
+  Set<String>? _hidden;
   int _index = 0;
+  int _fetched = 0;
   bool _loading = false;
   bool _done = false;
 
@@ -45,9 +48,11 @@ class _ReelsScreenState extends State<ReelsScreen> {
     if (_loading || _done) return;
     _loading = true;
     try {
-      final rows = await db.from('reels').select(reelSelect).eq('status', 'active').order('created_at', ascending: false).range(_reels.length, _reels.length + 14);
-      final list = List<Map<String, dynamic>>.from(rows);
-      if (list.length < 15) _done = true;
+      _hidden ??= Set<String>.from((await db.from('reel_hidden').select('reel_id').eq('user_id', myId!)).map((r) => r['reel_id'] as String));
+      final rows = await db.from('reels').select(reelSelect).eq('status', 'active').order('created_at', ascending: false).range(_fetched, _fetched + 14);
+      _fetched += rows.length;
+      final list = List<Map<String, dynamic>>.from(rows).where((r) => !_hidden!.contains(r['id'])).toList();
+      if (rows.length < 15) _done = true;
       _reels.addAll(list);
       await _loadLikes(list);
     } catch (e) {
@@ -66,6 +71,7 @@ class _ReelsScreenState extends State<ReelsScreen> {
 
   Future<void> _refresh() async {
     _reels.clear();
+    _fetched = 0;
     _done = false;
     await _more();
   }
@@ -103,6 +109,13 @@ class _ReelsScreenState extends State<ReelsScreen> {
                 playing: widget.active && i == _index,
                 liked: _liked.contains(_reels[i]['id']),
                 onLiked: (v) => setState(() => v ? _liked.add(_reels[i]['id'] as String) : _liked.remove(_reels[i]['id'])),
+                onMenu: (res) => setState(() {
+                  if (res == ReelMenuResult.deleted || res == ReelMenuResult.hidden) {
+                    _hidden?.add(_reels[i]['id'] as String);
+                    _reels.removeAt(i);
+                    if (_index >= _reels.length && _index > 0) _index = _reels.length - 1;
+                  }
+                }),
               ),
             ),
           ),
@@ -126,8 +139,9 @@ class _ReelsScreenState extends State<ReelsScreen> {
 }
 
 class ReelPlayer extends StatefulWidget {
-  const ReelPlayer({super.key, required this.reel, required this.playing, required this.liked, required this.onLiked});
+  const ReelPlayer({super.key, required this.reel, required this.playing, required this.liked, required this.onLiked, this.onMenu});
   final Map<String, dynamic> reel;
+  final ValueChanged<ReelMenuResult>? onMenu;
   final bool playing;
   final bool liked;
   final void Function(bool) onLiked;
@@ -287,12 +301,21 @@ class _ReelPlayerState extends State<ReelPlayer> {
               child: Avatar(profile: user, size: 46, ring: Colors.white),
             ),
             const SizedBox(height: 18),
-            _side(widget.liked ? Icons.favorite : Icons.favorite_border, compact(_likes), _like, color: widget.liked ? C.ruby : Colors.white),
-            _side(Icons.mode_comment_outlined, compact(_comments), _openComments),
+            _side(widget.liked ? Icons.favorite : Icons.favorite_border, r['hide_likes'] == true && r['user_id'] != myId ? 'Like' : compact(_likes), _like, color: widget.liked ? C.ruby : Colors.white),
+            if (r['comments_off'] == true && r['user_id'] != myId)
+              _side(Icons.comments_disabled_outlined, 'Off', () => toast(context, 'Comments are turned off for this reel'))
+            else
+              _side(Icons.mode_comment_outlined, compact(_comments), _openComments),
             if (r['allow_donations'] == true) _side(Icons.monetization_on, 'Gift', _donate, color: C.gold),
             _side(Icons.share, 'Share', () {
-              Clipboard.setData(ClipboardData(text: 'Watch this on Adda: reel ${r['id']}'));
+              Clipboard.setData(ClipboardData(text: 'Watch this on Adda: ${reelLink(r)}'));
               toast(context, 'Link copied');
+            }),
+            _side(Icons.more_horiz, '', () async {
+              final res = await showReelMenu(context, r);
+              if (res == null || !mounted) return;
+              setState(() {});
+              widget.onMenu?.call(res);
             }),
           ]),
         ),
@@ -306,6 +329,7 @@ class _ReelPlayerState extends State<ReelPlayer> {
               const SizedBox(height: 4),
               Text('${r['caption']}', maxLines: 3, overflow: TextOverflow.ellipsis),
             ],
+            if (r['edited_at'] != null) const Text('Edited', style: TextStyle(fontSize: 11, color: Colors.white54)),
             if (_track != null) ...[
               const SizedBox(height: 8),
               Row(children: [

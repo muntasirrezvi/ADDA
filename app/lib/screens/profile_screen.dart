@@ -14,6 +14,7 @@ import 'avatar_studio.dart';
 import 'games_tab.dart';
 import 'inbox_screen.dart';
 import 'leaderboard_screen.dart';
+import 'reel_menu.dart';
 import 'reels_screen.dart';
 import 'rewards.dart';
 import 'wallet_screen.dart';
@@ -72,6 +73,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .select('*, user:profiles!reels_user_id_fkey(id, username, avatar_url, avatar_preset), track:music_tracks(id, title, artist, audio_url)')
           .eq('user_id', id)
           .eq('status', 'active')
+          .order('pinned', ascending: false)
           .order('created_at', ascending: false)
           .limit(60);
       _reels = List<Map<String, dynamic>>.from(r);
@@ -252,18 +254,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: .62, mainAxisSpacing: 4, crossAxisSpacing: 4),
                 delegate: SliverChildBuilderDelegate(
                   (_, i) {
-                    final r = _reels[i];
-                    return GestureDetector(
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReelsScreen(active: true, initial: _reels, startIndex: i))),
-                      child: Container(
-                        decoration: BoxDecoration(color: C.card, borderRadius: BorderRadius.circular(8)),
-                        clipBehavior: Clip.antiAlias,
-                        child: Stack(fit: StackFit.expand, children: [
-                          if (r['cover_url'] != null) CachedNetworkImage(imageUrl: r['cover_url'] as String, fit: BoxFit.cover) else const Icon(Icons.play_arrow, color: C.mute, size: 36),
-                          Positioned(left: 6, bottom: 4, child: Row(children: [const Icon(Icons.play_arrow, size: 14), Text(compact(r['views'] as num), style: const TextStyle(fontSize: 11))])),
-                        ]),
-                      ),
-                    );
+                    return ReelTile(reel: _reels[i], onTap: () async {
+                      await Navigator.push(context, MaterialPageRoute(builder: (_) => ReelsScreen(active: true, initial: _reels, startIndex: i)));
+                      _load();
+                    });
                   },
                   childCount: _reels.length,
                 ),
@@ -374,6 +368,7 @@ class _MyMenu extends StatelessWidget {
         tile(Icons.edit, const Color(0xFF7FB0FF), 'Edit profile', 'Name, photo, cover and bio', () => go(const EditProfileScreen())),
         tile(Icons.auto_awesome, const Color(0xFFE0485A), 'AI avatar', 'Turn a photo into a fancy cartoon you', () => go(const AvatarStudio())),
         if (me['verified'] != true) tile(Icons.verified_user, C.emerald, 'Verify my identity', 'Needed before you can withdraw diamonds', () => go(const VerifyScreen())),
+        tile(Icons.bookmark, const Color(0xFFFFB347), 'Saved reels', 'Reels you saved from the ⋯ menu', () => go(const SavedReelsScreen())),
         tile(Icons.receipt_long, C.mute, 'Top-up history', 'Your coin and diamond purchases', () => go(const TopupHistoryScreen())),
         tile(Icons.settings, C.mute, 'Settings & privacy', 'Last seen, background voice, help, sign out', () => go(const SettingsScreen())),
       ]),

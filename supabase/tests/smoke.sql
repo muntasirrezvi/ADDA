@@ -312,3 +312,19 @@ select custom_topup_quote('coins', 123456), custom_topup_quote('diamonds', 1);
 select jsonb_array_length((wallet_info())->'recent') as my_transfers;
 reset role;
 select kind, coins, diamonds from coin_transfers order by id;
+-- reel options
+reset role;
+insert into reels(id, user_id, video_url) values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-00000000000b', 'x');
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+update reels set caption = 'edited', comments_off = true, hide_likes = true, pinned = true, edited_at = now() where id = '11111111-1111-1111-1111-111111111111';
+select caption, comments_off, pinned from reels where id = '11111111-1111-1111-1111-111111111111';
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
+\set ON_ERROR_STOP 0
+insert into reel_comments(reel_id, user_id, body) values ('11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-00000000000d', 'hi');
+update reels set caption = 'hacked' where id = '11111111-1111-1111-1111-111111111111';
+\set ON_ERROR_STOP 1
+insert into reel_saves(user_id, reel_id) values ('00000000-0000-0000-0000-00000000000d', '11111111-1111-1111-1111-111111111111');
+insert into reel_hidden(user_id, reel_id) values ('00000000-0000-0000-0000-00000000000d', '11111111-1111-1111-1111-111111111111');
+select count(*) as saved from reel_saves;
+reset role;
+select caption from reels where id = '11111111-1111-1111-1111-111111111111';
