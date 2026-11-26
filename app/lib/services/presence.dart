@@ -7,7 +7,7 @@ import 'api.dart';
 
 /// Online status: the app reports "I'm here" every minute while it is open, and shows
 /// others as Online / Last seen … / Offline (when they hide their last seen).
-class Presence {
+class OnlineStatus {
   static Timer? _beat;
   static final Map<String, ({bool online, DateTime? lastSeen, bool hidden, DateTime fetched})> _cache = {};
 
@@ -82,7 +82,7 @@ class _PresenceTextState extends State<PresenceText> {
   }
 
   Future<void> _load() async {
-    final p = await Presence.of(widget.userId);
+    final p = await OnlineStatus.of(widget.userId);
     if (mounted) setState(() => _p = p);
   }
 
@@ -91,7 +91,7 @@ class _PresenceTextState extends State<PresenceText> {
     final p = _p;
     if (p == null) return const SizedBox.shrink();
     final online = p.online;
-    final text = online ? 'Online' : (p.lastSeen == null ? 'Offline' : 'Last seen ${Presence.ago(p.lastSeen!)}');
+    final text = online ? 'Online' : (p.lastSeen == null ? 'Offline' : 'Last seen ${OnlineStatus.ago(p.lastSeen!)}');
     return Row(mainAxisSize: MainAxisSize.min, children: [
       Container(
         width: widget.size * .65,

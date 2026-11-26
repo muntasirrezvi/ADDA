@@ -111,7 +111,8 @@ class _SendScreenState extends State<SendScreen> {
     final unlimited = store?['unlimited'] == true;
     final fee = (info?['transfer_fee_pct'] as num?) ?? 0;
     final diamondsAllowed = widget.fromStore || info?['transfer_diamonds_enabled'] != false;
-    final recent = List<Map<String, dynamic>>.from(((widget.fromStore ? store?['recent'] : info?['recent']) as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
+    final Object? rawRecent = widget.fromStore ? (store == null ? null : store['recent']) : (info == null ? null : info['recent']);
+    final recent = List<Map<String, dynamic>>.from((rawRecent as List? ?? const []).map((e) => Map<String, dynamic>.from(e as Map)));
     return Scaffold(
       appBar: AppBar(title: Text(widget.fromStore ? 'Agent store' : 'Send coins & diamonds')),
       body: RefreshIndicator(

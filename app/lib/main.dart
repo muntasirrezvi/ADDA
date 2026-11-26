@@ -77,11 +77,11 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
       if (db.auth.currentSession != null) {
         await App.i.loadMe();
         CallService.i.start(navKey);
-        Presence.start();
+        OnlineStatus.start();
         if (Platform.isAndroid && App.i.flag('pay_play_enabled')) PlayBilling.i.start(); // finish purchases interrupted last time
       } else {
         CallService.i.stop();
-        Presence.stop();
+        OnlineStatus.stop();
       }
     } catch (e) {
       _error = errText(e);
@@ -93,9 +93,9 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // online status follows the app being open; the room pauses itself if background voice is not allowed
     if (state == AppLifecycleState.resumed && db.auth.currentSession != null) {
-      Presence.start();
+      OnlineStatus.start();
     } else if (state == AppLifecycleState.paused) {
-      Presence.stop();
+      OnlineStatus.stop();
     }
     ActiveRoom.onLifecycle(state);
   }
