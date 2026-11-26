@@ -276,6 +276,7 @@ select jsonb_object_keys(admin_user_detail('00000000-0000-0000-0000-00000000000c
 select admin_user_detail('00000000-0000-0000-0000-00000000000c')->'stats';
 -- presence, room people, transfers, agent store, exchange, custom top-up
 reset role;
+update profiles set role = 'user' where id = '00000000-0000-0000-0000-00000000000d';
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
 select touch_presence();
 select set_presence_privacy(true);
@@ -294,10 +295,11 @@ select admin_stock('00000000-0000-0000-0000-00000000000c', 50000000, 1000, 'load
 select (find_user((select public_id from profiles where id = '00000000-0000-0000-0000-00000000000b')))->>'username' as found;
 -- agent sends from store
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
-select store_transfer((select public_id from profiles where id = '00000000-0000-0000-0000-00000000000b'), 1000000, 10, 'promo');
+select store_transfer((select public_id from profiles where id = '00000000-0000-0000-0000-00000000000d'), 1000000, 10, 'promo');
 select (my_store())->'coins' as store_coins_left, (my_store())->'diamonds' as store_dia_left;
 \set ON_ERROR_STOP 0
-select store_transfer((select public_id from profiles where id = '00000000-0000-0000-0000-00000000000b'), 999999999999, 0);
+select store_transfer((select public_id from profiles where id = '00000000-0000-0000-0000-00000000000d'), 999999999999, 0);
+select store_transfer((select public_id from profiles where id = '00000000-0000-0000-0000-00000000000c'), 1000, 0);
 \set ON_ERROR_STOP 1
 -- user to user
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
