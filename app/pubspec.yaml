@@ -35,3 +35,4 @@ flutter:
   assets:
     - assets/games/
     - assets/sfx/
+    - shorebird.yaml
