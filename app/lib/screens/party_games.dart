@@ -14,7 +14,7 @@ import 'games_kit.dart';
 /// `party_*` functions on the server; everyone sees the same table through realtime updates.
 
 const _kindName = {'ludo': 'Ludo', 'ttt': 'Tic-Tac-Toe', 'rps': 'Rock Paper Scissors', 'luckybag': 'Lucky Bag', 'pk': 'PK Battle', 'bottle': 'Spin the Bottle'};
-const _kindArt = {'ludo': 'pawn_red', 'ttt': 'piece_x', 'rps': 'rps_scissors', 'luckybag': 'luckybag', 'pk': 'vs', 'bottle': 'bottle'};
+const _kindArt = {'ludo': 'lk_pin_red', 'ttt': 'piece_x', 'rps': 'rps_scissors', 'luckybag': 'luckybag', 'pk': 'vs', 'bottle': 'bottle'};
 
 String _name(String? id) => '${Profiles.get(id)?['username'] ?? 'Player'}';
 
@@ -815,7 +815,7 @@ class _PartyGameScreenState extends State<PartyGameScreen> {
     final status = g['status'] as String;
     final stake = (g['stake'] as num).toInt();
     final inGame = players.contains(myId);
-    final color = switch (kind) { 'ludo' => const Color(0xFF123A22), 'ttt' => const Color(0xFF3A0E22), _ => const Color(0xFF1E1E2A) };
+    final color = switch (kind) { 'ludo' => const Color(0xFF3A1F6E), 'ttt' => const Color(0xFF3A0E22), _ => const Color(0xFF1E1E2A) };
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -830,7 +830,7 @@ class _PartyGameScreenState extends State<PartyGameScreen> {
         color: color,
         child: SafeArea(
           child: Column(children: [
-            _playersBar(g, players),
+            if (kind != 'ludo' || status == 'waiting') _playersBar(g, players),
             Expanded(
               child: switch (status) {
                 'waiting' => _lobby(g, players, inGame),
@@ -1292,6 +1292,20 @@ Offset _cell(String color, int p, int token) {
   return switch (color) { 'red' => Offset(k, 7), 'green' => Offset(7, k), 'yellow' => Offset(14 - k, 7), _ => Offset(7, 14 - k) };
 }
 
+/// Board corners in the rendered board image: 0 top-left, 1 top-right, 2 bottom-right, 3 bottom-left.
+const _corner = {'red': 0, 'green': 1, 'yellow': 2, 'blue': 3};
+
+/// Turn a board cell a quarter-turn clockwise [k] times around the centre of the 15x15 grid.
+Offset _rot(Offset c, int k) {
+  var o = c;
+  for (var i = 0; i < k; i++) {
+    o = Offset(14 - o.dy, o.dx);
+  }
+  return o;
+}
+
+const _turnSeconds = 40;
+
 class _LudoView extends StatefulWidget {
   const _LudoView({required this.game, required this.onMove, required this.busy});
   final Map<String, dynamic> game;
@@ -1305,20 +1319,42 @@ class _LudoViewState extends State<_LudoView> with TickerProviderStateMixin {
   /// positions currently drawn, per player per token (may lag behind the server while stepping)
   List<List<int>> _shown = [];
   Timer? _step;
+  Timer? _clock;
   late final AnimationController _dice = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
   late final AnimationController _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
   String _lastKey = '';
   String _lastRoll = '';
+  String _turnKey = '';
+  DateTime _turnSince = DateTime.now();
+  String _claimed = '';
 
   Map<String, dynamic> get _st => Map<String, dynamic>.from(widget.game['state'] as Map);
   List<List<int>> get _tokens => List<List<dynamic>>.from(_st['tokens'] as List).map((t) => t.map((e) => (e as num).toInt()).toList()).toList();
+  List<String> get _players => List<String>.from(widget.game['players'] as List);
 
   @override
   void initState() {
     super.initState();
     _shown = _tokens;
     _lastKey = '${_st['last']}';
+    _turnKey = '${_st['turn']}|${_st['rolled']}|${_st['dice']}';
+    final upd = DateTime.tryParse('${widget.game['updated_at']}')?.toLocal();
+    if (upd != null && DateTime.now().difference(upd).inSeconds < _turnSeconds) _turnSince = upd;
+    _clock = Timer.periodic(const Duration(seconds: 1), (_) => _tickClock());
     _maybeAuto();
+  }
+
+  void _tickClock() {
+    if (!mounted) return;
+    setState(() {});
+    // when the player on turn has gone quiet, any other player's app skips them
+    final me = _players.indexOf(myId ?? '');
+    final turn = (_st['turn'] as num).toInt();
+    if (widget.game['status'] != 'playing' || me < 0 || me == turn) return;
+    if (DateTime.now().difference(_turnSince).inSeconds >= _turnSeconds + 3 && _claimed != _turnKey) {
+      _claimed = _turnKey;
+      App.i.rpc('party_move', {'p_id': widget.game['id'], 'p_move': {'action': 'timeout'}}).catchError((_) => null);
+    }
   }
 
   @override
@@ -1337,6 +1373,11 @@ class _LudoViewState extends State<_LudoView> with TickerProviderStateMixin {
     } else if (_step == null) {
       _shown = target;
     }
+    final tk = '${st['turn']}|${st['rolled']}|${st['dice']}';
+    if (tk != _turnKey) {
+      _turnKey = tk;
+      _turnSince = DateTime.now();
+    }
     final rollKey = '${st['dice']}|${st['turn']}|${st['rolled']}|${st['last']}';
     if (last != null && last['roll'] != null && rollKey != _lastRoll) {
       _lastRoll = rollKey;
@@ -1352,10 +1393,9 @@ class _LudoViewState extends State<_LudoView> with TickerProviderStateMixin {
     final tok = (last['token'] as num).toInt();
     final from = (last['from'] as num).toInt();
     final to = (last['to'] as num).toInt();
-    // everything except the moving token jumps straight to its new place after the move
     final path = <int>[if (from < 0) 0 else for (var p = from + 1; p <= to; p++) p];
     var i = 0;
-    _step = Timer.periodic(const Duration(milliseconds: 190), (t) {
+    _step = Timer.periodic(const Duration(milliseconds: 210), (t) {
       if (!mounted) return t.cancel();
       if (i >= path.length) {
         t.cancel();
@@ -1374,10 +1414,9 @@ class _LudoViewState extends State<_LudoView> with TickerProviderStateMixin {
   }
 
   void _maybeAuto() {
-    // if only one token can move, move it for the player
+    // if only one token can move, move it for the player (like Ludo King)
     final st = _st;
-    final players = List<String>.from(widget.game['players'] as List);
-    final me = players.indexOf(myId ?? '');
+    final me = _players.indexOf(myId ?? '');
     if (widget.game['status'] != 'playing' || me < 0 || (st['turn'] as num).toInt() != me || st['rolled'] != true) return;
     final movable = List<int>.from((st['movable'] as List).map((e) => (e as num).toInt()));
     if (movable.length == 1) {
@@ -1392,15 +1431,110 @@ class _LudoViewState extends State<_LudoView> with TickerProviderStateMixin {
   @override
   void dispose() {
     _step?.cancel();
+    _clock?.cancel();
     _dice.dispose();
     _pulse.dispose();
     super.dispose();
   }
 
+  Widget _diceBox({required bool active, required bool ready, required int? dice}) {
+    return GestureDetector(
+      onTap: ready && !widget.busy ? () => widget.onMove({'action': 'roll'}) : null,
+      child: AnimatedBuilder(
+        animation: Listenable.merge([_dice, _pulse]),
+        builder: (_, __) {
+          final t = _dice.value;
+          final rolling = _dice.isAnimating;
+          final img = rolling ? 'die_roll_${(t * 14).floor() % 8}' : (dice == null || ready ? 'die_6' : 'die_$dice');
+          return Container(
+            width: 58,
+            height: 58,
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: ready ? C.gold : Colors.black12, width: ready ? 3 : 1),
+              boxShadow: [
+                const BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 4)),
+                if (ready) BoxShadow(color: C.gold.withValues(alpha: .4 + .4 * _pulse.value), blurRadius: 18),
+              ],
+            ),
+            child: Transform.translate(
+              offset: Offset(0, rolling ? -math.sin(t * math.pi * 2).abs() * 10 : (ready ? -3 * _pulse.value : 0)),
+              child: Transform.rotate(angle: rolling ? (1 - t) * 6 : 0, child: art(img)),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// A Ludo King style player card that sits outside a corner of the board.
+  Widget _panel(int? pi, {required bool left, required List<String> colors, required int turn, required int me, required int? dice}) {
+    if (pi == null) return const SizedBox(width: 150, height: 84);
+    final col = colors[pi];
+    final c = _ludoColor(col);
+    final active = widget.game['status'] == 'playing' && pi == turn;
+    final out = List<int>.from((_st['out'] as List? ?? const []).map((e) => (e as num).toInt())).contains(pi);
+    final home = _tokens.length > pi ? _tokens[pi].where((p) => p == 56).length : 0;
+    final left_ = (_turnSeconds - DateTime.now().difference(_turnSince).inMilliseconds / 1000).clamp(0.0, _turnSeconds.toDouble());
+    final avatar = SizedBox(
+      width: 60,
+      height: 60,
+      child: Stack(alignment: Alignment.center, children: [
+        if (active)
+          SizedBox(
+            width: 60,
+            height: 60,
+            child: CircularProgressIndicator(
+              value: left_ / _turnSeconds,
+              strokeWidth: 4,
+              backgroundColor: Colors.black26,
+              color: left_ < 10 ? C.ruby : Colors.white,
+            ),
+          ),
+        Container(
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(shape: BoxShape.circle, color: c),
+          child: Opacity(opacity: out ? .4 : 1, child: Avatar(profile: Profiles.get(_players[pi]), size: 48)),
+        ),
+      ]),
+    );
+    final info = Column(crossAxisAlignment: left ? CrossAxisAlignment.start : CrossAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
+      SizedBox(
+        width: 76,
+        child: Text(_players[pi] == myId ? 'You' : _name(_players[pi]),
+            maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: left ? TextAlign.left : TextAlign.right, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: active ? Colors.white : Colors.white70)),
+      ),
+      Row(mainAxisSize: MainAxisSize.min, children: [
+        for (var k = 0; k < 4; k++)
+          Container(
+            width: 9,
+            height: 9,
+            margin: const EdgeInsets.only(right: 2, top: 3),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: k < home ? c : Colors.white24, border: Border.all(color: c, width: 1)),
+          ),
+      ]),
+      if (out) const Text('left', style: TextStyle(fontSize: 10, color: C.mute)),
+    ]);
+    final box = active ? _diceBox(active: true, ready: pi == me && _st['rolled'] != true, dice: dice) : const SizedBox(width: 58);
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(colors: [c.withValues(alpha: active ? .55 : .22), Colors.black.withValues(alpha: .35)], begin: Alignment.topCenter, end: Alignment.bottomCenter),
+        border: Border.all(color: active ? Colors.white : c.withValues(alpha: .5), width: active ? 2 : 1),
+        boxShadow: active ? [BoxShadow(color: c.withValues(alpha: .6), blurRadius: 16)] : null,
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: left ? [avatar, const SizedBox(width: 6), info, const SizedBox(width: 4), box] : [box, const SizedBox(width: 4), info, const SizedBox(width: 6), avatar]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final st = _st;
-    final players = List<String>.from(widget.game['players'] as List);
+    final players = _players;
     final colors = List<String>.from(st['colors'] as List);
     final turn = (st['turn'] as num).toInt();
     final me = players.indexOf(myId ?? '');
@@ -1408,13 +1542,24 @@ class _LudoViewState extends State<_LudoView> with TickerProviderStateMixin {
     final rolled = st['rolled'] == true;
     final movable = myTurn && rolled ? List<int>.from((st['movable'] as List).map((e) => (e as num).toInt())) : const <int>[];
     final dice = (st['dice'] as num?)?.toInt();
+    // your colour always sits in the bottom-left corner
+    final k = me >= 0 ? (3 - _corner[colors[me]]! + 4) % 4 : 0;
+    final at = <int, int>{};
+    for (var i = 0; i < colors.length; i++) {
+      at[(_corner[colors[i]]! + k) % 4] = i;
+    }
+    Widget panel(int pos) => _panel(at[pos], left: pos == 0 || pos == 3, colors: colors, turn: turn, me: me, dice: dice);
     return Column(children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [panel(0), panel(1)]),
+      ),
       Expanded(
         child: Center(
           child: AspectRatio(
             aspectRatio: 1,
             child: Padding(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(6),
               child: LayoutBuilder(builder: (context, box) {
                 final w = box.maxWidth;
                 final cell = w / 16;
@@ -1424,113 +1569,89 @@ class _LudoViewState extends State<_LudoView> with TickerProviderStateMixin {
                 for (var pi = 0; pi < _shown.length && pi < colors.length; pi++) {
                   for (var t = 0; t < 4; t++) {
                     final p = _shown[pi][t];
-                    final c = _cell(colors[pi], p, t);
-                    final k = '${c.dx},${c.dy}';
-                    final stack = seen[k] = (seen[k] ?? -1) + 1;
-                    final o = px(c) + Offset(stack * cell * .18, -stack * cell * .1);
-                    final size = cell * 1.35;
+                    final c = _rot(_cell(colors[pi], p, t), k);
+                    final key = '${c.dx.toStringAsFixed(1)},${c.dy.toStringAsFixed(1)}';
+                    final stack = seen[key] = (seen[key] ?? -1) + 1;
+                    final o = px(c) + Offset(stack * cell * .22 - (stack > 0 ? cell * .1 : 0), -stack * cell * .08);
+                    final h = cell * 1.55, wd = cell * 1.15;
                     final can = pi == me && movable.contains(t);
                     pawns.add((
                       o.dy,
                       AnimatedPositioned(
                         key: ValueKey('p$pi-$t'),
-                        duration: const Duration(milliseconds: 170),
+                        duration: const Duration(milliseconds: 190),
                         curve: Curves.easeOut,
-                        left: o.dx - size / 2,
-                        top: o.dy - size * .86,
-                        width: size,
-                        height: size,
+                        left: o.dx - wd / 2,
+                        top: o.dy + cell * .34 - h,
+                        width: wd,
+                        height: h,
                         child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
                           onTap: can && !widget.busy
                               ? () {
                                   Sfx.play('pop');
                                   widget.onMove({'action': 'move', 'token': t});
                                 }
                               : null,
-                          child: Stack(clipBehavior: Clip.none, alignment: Alignment.bottomCenter, children: [
-                            if (can)
-                              AnimatedBuilder(
-                                animation: _pulse,
-                                builder: (_, __) => Container(
-                                  width: size * (.7 + .2 * _pulse.value),
-                                  height: size * (.3 + .08 * _pulse.value),
-                                  margin: EdgeInsets.only(bottom: size * .02),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.all(Radius.elliptical(size, size * .3)),
-                                    border: Border.all(color: Colors.white, width: 2),
-                                    boxShadow: [BoxShadow(color: C.gold.withValues(alpha: .9), blurRadius: 12)],
+                          child: TweenAnimationBuilder<double>(
+                            key: ValueKey('hop$pi-$t-$p'),
+                            tween: Tween(begin: 0, end: 1),
+                            duration: const Duration(milliseconds: 200),
+                            builder: (_, v, child) => Transform.translate(offset: Offset(0, -math.sin(v * math.pi) * cell * .55), child: child),
+                            child: Stack(clipBehavior: Clip.none, alignment: Alignment.bottomCenter, children: [
+                              if (can)
+                                AnimatedBuilder(
+                                  animation: _pulse,
+                                  builder: (_, __) => Container(
+                                    width: wd * (.95 + .25 * _pulse.value),
+                                    height: wd * (.4 + .1 * _pulse.value),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.all(Radius.elliptical(wd, wd * .4)),
+                                      border: Border.all(color: Colors.white, width: 2),
+                                      boxShadow: [BoxShadow(color: _ludoColor(colors[pi]).withValues(alpha: .9), blurRadius: 12, spreadRadius: 1)],
+                                    ),
                                   ),
                                 ),
+                              Transform.translate(
+                                offset: Offset(0, can ? -7 * _pulse.value : 0),
+                                child: Transform.scale(scale: can ? 1.08 : 1, alignment: Alignment.bottomCenter, child: art('lk_pin_${colors[pi]}', width: wd, height: h)),
                               ),
-                            Transform.translate(
-                              offset: Offset(0, can ? -6 * _pulse.value : 0),
-                              child: art('pawn_${colors[pi]}', size: size),
-                            ),
-                          ]),
+                            ]),
+                          ),
                         ),
                       ),
                     ));
                   }
                 }
                 pawns.sort((a, b) => a.$1.compareTo(b.$1));
-                return Transform(
-                  alignment: Alignment.center,
-                  transform: Matrix4.identity()
-                    ..setEntry(3, 2, .0007)
-                    ..rotateX(.18),
-                  child: Stack(clipBehavior: Clip.none, children: [
-                    Positioned.fill(
-                      child: Container(
-                        decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .8), blurRadius: 30, offset: const Offset(0, 20))]),
-                        child: art('ludo_board', fit: BoxFit.fill),
-                      ),
+                return Stack(clipBehavior: Clip.none, children: [
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .6), blurRadius: 24, offset: const Offset(0, 12))]),
+                      child: RotatedBox(quarterTurns: k, child: art('lk_board', fit: BoxFit.fill)),
                     ),
-                    for (final p in pawns) p.$2,
-                  ]),
-                );
+                  ),
+                  for (final p in pawns) p.$2,
+                ]);
               }),
             ),
           ),
         ),
       ),
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        child: Row(children: [
-          Container(width: 14, height: 14, decoration: BoxDecoration(shape: BoxShape.circle, color: _ludoColor(colors[turn]))),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              widget.game['status'] != 'playing'
-                  ? ''
-                  : myTurn
-                      ? (rolled ? (movable.length > 1 ? 'Tap a glowing pawn to move' : 'Moving…') : 'Your turn — tap the dice')
-                      : "${_name(players[turn])}'s turn",
-              style: TextStyle(fontWeight: FontWeight.w700, color: myTurn ? C.gold : Colors.white70),
-            ),
-          ),
-          GestureDetector(
-            onTap: myTurn && !rolled && !widget.busy ? () => widget.onMove({'action': 'roll'}) : null,
-            child: AnimatedBuilder(
-              animation: Listenable.merge([_dice, _pulse]),
-              builder: (_, __) {
-                final t = _dice.value;
-                final rolling = _dice.isAnimating;
-                final img = rolling ? 'die_roll_${(t * 14).floor() % 8}' : (dice == null ? 'die_6' : 'die_$dice');
-                final ready = myTurn && !rolled;
-                return Transform.translate(
-                  offset: Offset(0, rolling ? -math.sin(t * math.pi * 2).abs() * 18 : (ready ? -4 * _pulse.value : 0)),
-                  child: Transform.rotate(
-                    angle: rolling ? (1 - t) * 6 : 0,
-                    child: Container(
-                      decoration: ready ? BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: C.gold.withValues(alpha: .4 + .4 * _pulse.value), blurRadius: 22)]) : null,
-                      child: art(img, size: 76),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ]),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [panel(3), panel(2)]),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Text(
+          widget.game['status'] != 'playing'
+              ? ''
+              : myTurn
+                  ? (rolled ? (movable.length > 1 ? 'Tap a glowing piece to move' : 'Moving…') : 'Your turn — tap the dice')
+                  : "${_name(players[turn])}'s turn",
+          style: TextStyle(fontWeight: FontWeight.w700, color: myTurn ? C.gold : Colors.white70),
+        ),
       ),
     ]);
   }

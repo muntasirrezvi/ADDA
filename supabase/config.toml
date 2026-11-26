@@ -21,3 +21,6 @@ verify_jwt = false
 # phone + password sign-in (looks up the account's email); Supabase's own rate limits apply to the password check
 [functions.login-phone]
 verify_jwt = false
+
+[functions.make-avatar]
+verify_jwt = true

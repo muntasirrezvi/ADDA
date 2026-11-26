@@ -235,3 +235,42 @@ end $$;
 select status, winner is not null as has_winner, state->'tokens', state->'prize' from room_games where kind = 'ludo';
 select kind, status from room_games order by id;
 select u.username, w.coins from wallets w join profiles u on u.id=w.user_id order by u.public_id;
+-- withdrawals, 7-day reward, admin user detail
+reset role;
+update wallets set diamonds = 20000000 where user_id = '00000000-0000-0000-0000-00000000000c';
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+select (withdraw_status())->'can' as can_before, jsonb_path_query_array(withdraw_status()->'checks', '$[*] ? (@.ok == false).key') as failing;
+\set ON_ERROR_STOP 0
+select request_withdrawal(6250000, 'bkash', '01700000000', 'Test');
+\set ON_ERROR_STOP 1
+reset role;
+update profiles set verified = true, created_at = now() - interval '30 days' where id = '00000000-0000-0000-0000-00000000000c';
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+select (withdraw_status())->'can' as can_now;
+select diamonds, amount_usd, amount_bdt, method, status from request_withdrawal(6250000, 'bkash', '01700000000', 'Test');
+select (withdraw_status())->'can' as can_after_one;
+\set ON_ERROR_STOP 0
+select request_withdrawal(6250000, 'bkash', '01700000000');
+\set ON_ERROR_STOP 1
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select admin_update_payout((select max(id) from payouts), 'paid', null, 'TRX123');
+select status, paid_ref from payouts order by id desc limit 1;
+-- daily reward: day 1 today, then simulate a streak
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
+select checkin_status()->'days' as days;
+select daily_checkin();
+select daily_checkin();
+reset role;
+update daily_checkins set day = current_date - 1 where user_id = '00000000-0000-0000-0000-00000000000d';
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
+select daily_checkin() as day2;
+reset role;
+update daily_checkins set day = day - 10 where user_id = '00000000-0000-0000-0000-00000000000d';
+insert into daily_checkins(user_id, day, reward, streak_day) values ('00000000-0000-0000-0000-00000000000d', current_date - 1, 1, 7);
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
+select daily_checkin() as after_day7_restarts;
+select ai_avatar_quota();
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select jsonb_object_keys(admin_user_detail('00000000-0000-0000-0000-00000000000c')) k order by 1;
+select admin_user_detail('00000000-0000-0000-0000-00000000000c')->'stats';

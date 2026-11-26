@@ -250,6 +250,7 @@ class _RoomScreenState extends State<RoomScreen> {
             const SizedBox(height: 8),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               Flexible(child: Text('${p?['username'] ?? ''}', overflow: TextOverflow.ellipsis, style: serif(20))),
+              if (uid == _room?['owner_id']) const Padding(padding: EdgeInsets.only(left: 6), child: HostTag()),
               const SizedBox(width: 6),
               LevelBadge((p?['wealth_level'] as num?)?.toInt() ?? 1),
             ]),
@@ -458,6 +459,7 @@ class _RoomScreenState extends State<RoomScreen> {
               speaking: speaking,
               size: size,
               host: seat == 0,
+              crown: uid != null && uid == _room?['owner_id'],
               child: uid == null
                   ? Container(
                       width: size,
@@ -516,6 +518,7 @@ class _RoomScreenState extends State<RoomScreen> {
                 decoration: BoxDecoration(color: Colors.black.withValues(alpha: .38), borderRadius: BorderRadius.circular(14)),
                 child: Text.rich(TextSpan(children: [
                   WidgetSpan(alignment: PlaceholderAlignment.middle, child: Padding(padding: const EdgeInsets.only(right: 5), child: LevelBadge((p?['wealth_level'] as num?)?.toInt() ?? 1))),
+                  if (m['user_id'] == _room?['owner_id']) const WidgetSpan(alignment: PlaceholderAlignment.middle, child: Padding(padding: EdgeInsets.only(right: 5), child: HostTag(small: true))),
                   TextSpan(text: '${p?['username'] ?? '…'}: ', style: const TextStyle(color: C.gold, fontWeight: FontWeight.w700, fontSize: 13)),
                   TextSpan(text: '${m['body'] ?? ''}', style: const TextStyle(fontSize: 13)),
                 ])),
@@ -723,7 +726,8 @@ class _GiftSheetState extends State<GiftSheet> {
 
 /// Seat avatar with a live "talking" animation: ripples around the avatar and a bouncing mic badge.
 class SpeakingSeat extends StatefulWidget {
-  const SpeakingSeat({super.key, required this.speaking, required this.size, required this.child, this.host = false, this.muted = false});
+  const SpeakingSeat({super.key, required this.speaking, required this.size, required this.child, this.host = false, this.muted = false, this.crown = false});
+  final bool crown;
   final bool speaking;
   final double size;
   final Widget child;
@@ -786,6 +790,15 @@ class _SpeakingSeatState extends State<SpeakingSeat> with SingleTickerProviderSt
             ),
             child: widget.child,
           ),
+          if (widget.crown)
+            Positioned(
+              top: -widget.size * .2,
+              child: Transform.rotate(
+                angle: -.12,
+                child: Image.asset('assets/games/crown.webp', width: widget.size * .62, filterQuality: FilterQuality.medium),
+              ),
+            ),
+          if (widget.crown) const Positioned(bottom: 0, child: HostTag(small: true)),
           if (widget.speaking || widget.muted)
             Positioned(
               right: 4,

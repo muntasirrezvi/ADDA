@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import { fmt, money, rpc, supabase, when } from "@/lib/supabase";
 import { useMe, useRun } from "@/components/Shell";
@@ -17,7 +18,7 @@ export default function Users() {
   const { data, loading, err, reload } = useAsync(() => rpc<U[]>("admin_find_users", { p_q: term, p_limit: 100 }), [term]);
 
   return (
-    <Page title="Users" sub="Search by username, email, phone or user ID.">
+    <Page title="Users" sub="Search by username, email, phone or user ID. Click a name to see everything about that person.">
       <form className="row mb" onSubmit={(e) => { e.preventDefault(); setTerm(q.trim()); }}>
         <input placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 360 }} />
         <button>Search</button>
@@ -29,13 +30,13 @@ export default function Users() {
             <tbody>
               {data.map((u) => (
                 <tr key={u.id}>
-                  <td><b>{u.username}</b><small className="muted">Lv {u.wealth_level} {u.verified && "· verified"}</small></td>
+                  <td><Link href={`/users/view/?id=${u.id}`}><b style={{ color: "var(--gold)" }}>{u.username}</b></Link><small className="muted">Lv {u.wealth_level} {u.verified && "· verified"}</small></td>
                   <td>{u.public_id}</td>
                   <td className="sm">{u.email}<br /><span className="muted">{u.phone}</span></td>
                   <td><Badge tone={u.role === "admin" ? "gold" : u.role === "user" ? "dim" : ""}>{u.role}</Badge></td>
                   <td>{fmt(u.coins)}</td><td>{fmt(u.diamonds)}</td><td>{money(u.lifetime_usd)}</td>
                   <td>{status(u)}</td>
-                  <td className="act"><button className="sm" onClick={() => setSel(u)}>Manage</button></td>
+                  <td className="act"><Link href={`/users/view/?id=${u.id}`}><button className="sm ghost">View all</button></Link> <button className="sm" onClick={() => setSel(u)}>Manage</button></td>
                 </tr>
               ))}
             </tbody>
@@ -69,6 +70,7 @@ function UserModal({ u, onClose }: { u: U; onClose: () => void }) {
 
   return (
     <Modal title={`${u.username} · ${u.public_id}`} onClose={onClose} wide>
+      <div className="row end mb"><Link href={`/users/view/?id=${u.id}`}><button className="sm ghost">Open full profile & activity →</button></Link></div>
       <div className="grid g2">
         <div className="form">
           <dl className="kv">

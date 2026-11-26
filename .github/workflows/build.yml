@@ -100,6 +100,43 @@ jobs:
             gh release create latest adda.apk adda-old-phones.apk --prerelease --title "Adda test build" --notes "$notes"
           fi
 
+  # iPhone build. Not signed: install it with Sideloadly or AltStore using your Apple ID,
+  # or add signing + TestFlight later with a paid Apple Developer account.
+  ios:
+    runs-on: macos-latest
+    permissions: { contents: write }
+    defaults: { run: { working-directory: app } }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - run: bash tool/setup.sh
+      - run: flutter pub get
+      - name: Build iOS app (unsigned)
+        run: >
+          flutter build ios --release --no-codesign
+          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+      - name: Package .ipa
+        run: |
+          mkdir -p build/ipa/Payload
+          cp -R build/ios/iphoneos/Runner.app build/ipa/Payload/
+          cd build/ipa && zip -qry adda-ios.ipa Payload && ls -lh adda-ios.ipa
+      - uses: actions/upload-artifact@v5
+        with: { name: adda-ios, path: app/build/ipa/adda-ios.ipa }
+      - name: Publish the iPhone download
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd build/ipa
+          if gh release view latest >/dev/null 2>&1; then
+            gh release upload latest adda-ios.ipa --clobber
+          else
+            gh release create latest adda-ios.ipa --prerelease --title "Adda test build" --notes "Test build"
+          fi
+
   # Sets up your live Supabase project: database changes, then the server functions.
   # Runs only on the main branch, only after the database test passes, and only once the
   # SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF and SUPABASE_DB_PASSWORD secrets exist.

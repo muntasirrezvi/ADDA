@@ -8,9 +8,11 @@ import '../services/api.dart';
 import '../services/calls.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'avatar_studio.dart';
 import 'inbox_screen.dart';
 import 'reels_screen.dart';
 import 'wallet_screen.dart';
+import 'withdraw_screen.dart';
 
 /// Your own profile tab.
 class MeScreen extends StatelessWidget {
@@ -299,7 +301,7 @@ class _MyMenu extends StatelessWidget {
       child: Column(children: [
         ValueListenableBuilder<int>(
           valueListenable: App.i.diamonds,
-          builder: (_, d, __) => tile(Icons.diamond, 'Host earnings', '${grouped(d)} diamonds', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EarningsScreen()))),
+          builder: (_, d, __) => tile(Icons.diamond, 'Diamonds & withdraw', '${grouped(d)} diamonds', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EarningsScreen()))),
         ),
         if (me['verified'] != true) tile(Icons.verified_user, 'Become a verified host', 'Verify your identity to withdraw earnings', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VerifyScreen()))),
         tile(Icons.receipt_long, 'Top-up history', null, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TopupHistoryScreen()))),
@@ -387,6 +389,32 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ]),
           ),
         ]),
+        const SizedBox(height: 14),
+        GestureDetector(
+          onTap: () async {
+            final url = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const AvatarStudio()));
+            if (url != null && mounted) setState(() => _p['avatar_url'] = url);
+          },
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xFF8A3AE0), Color(0xFFE0485A), Color(0xFFFFB347)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: const [BoxShadow(color: Color(0x668A3AE0), blurRadius: 16, offset: Offset(0, 6))],
+            ),
+            child: const Row(children: [
+              Icon(Icons.auto_awesome, color: Colors.white, size: 30),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Create my AI avatar', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                  Text('Turn your photo into a fancy cartoon you', style: TextStyle(fontSize: 12, color: Colors.white70)),
+                ]),
+              ),
+              Icon(Icons.chevron_right, color: Colors.white),
+            ]),
+          ),
+        ),
         const Section('Or pick an avatar'),
         GridView.count(
           crossAxisCount: 6,
@@ -410,108 +438,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         TextField(controller: _bio, maxLength: 120, maxLines: 3, decoration: const InputDecoration(labelText: 'Bio')),
         const SizedBox(height: 12),
         GoldButton(label: 'Save', busy: _busy, onTap: _save),
-      ]),
-    );
-  }
-}
-
-class EarningsScreen extends StatefulWidget {
-  const EarningsScreen({super.key});
-  @override
-  State<EarningsScreen> createState() => _EarningsScreenState();
-}
-
-class _EarningsScreenState extends State<EarningsScreen> {
-  List<Map<String, dynamic>> _payouts = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final r = await db.from('payouts').select().eq('user_id', myId!).order('created_at', ascending: false).limit(30);
-    await App.i.refreshWallet();
-    if (mounted) setState(() => _payouts = List<Map<String, dynamic>>.from(r));
-  }
-
-  Future<void> _withdraw() async {
-    final perUsd = App.i.number('diamonds_per_usd', 625000);
-    final min = App.i.number('min_payout_diamonds', 6250000);
-    String method = 'bkash';
-    final amount = TextEditingController(text: '${App.i.diamonds.value}');
-    final account = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, set) => AlertDialog(
-          title: Text('Withdraw', style: serif(20)),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text('Minimum ${grouped(min)} diamonds. ${grouped(perUsd)} diamonds = \$1.', style: const TextStyle(color: C.mute, fontSize: 12)),
-            const SizedBox(height: 10),
-            TextField(controller: amount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Diamonds')),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              value: method,
-              items: const [
-                DropdownMenuItem(value: 'bkash', child: Text('bKash')),
-                DropdownMenuItem(value: 'nagad', child: Text('Nagad')),
-                DropdownMenuItem(value: 'bank', child: Text('Bank')),
-                DropdownMenuItem(value: 'payoneer', child: Text('Payoneer')),
-              ],
-              onChanged: (v) => set(() => method = v ?? method),
-              decoration: const InputDecoration(labelText: 'Method'),
-            ),
-            const SizedBox(height: 10),
-            TextField(controller: account, decoration: const InputDecoration(labelText: 'Account number / email')),
-          ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: C.mute))),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Request', style: TextStyle(color: C.gold))),
-          ],
-        ),
-      ),
-    );
-    if (ok != true || !mounted) return;
-    await attempt(context, () async {
-      await App.i.rpc('request_payout', {'p_diamonds': int.tryParse(amount.text) ?? 0, 'p_method': method, 'p_account': account.text.trim()});
-      await _load();
-    }, ok: 'Request sent. You will be notified when it is paid.');
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final perUsd = App.i.number('diamonds_per_usd', 625000);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Host earnings')),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(color: C.card, borderRadius: BorderRadius.circular(20), border: Border.all(color: C.line)),
-          child: ValueListenableBuilder<int>(
-            valueListenable: App.i.diamonds,
-            builder: (_, d, __) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('DIAMONDS', style: TextStyle(color: C.mute, letterSpacing: 2, fontSize: 11)),
-              const SizedBox(height: 6),
-              CoinText(grouped(d), size: 28, diamond: true),
-              const SizedBox(height: 4),
-              Text('≈ \$${(d / perUsd).toStringAsFixed(2)}', style: const TextStyle(color: C.mute)),
-              const SizedBox(height: 14),
-              GoldButton(label: 'Withdraw', icon: Icons.account_balance, onTap: App.i.me.value?['verified'] == true ? _withdraw : null),
-              if (App.i.me.value?['verified'] != true)
-                const Padding(padding: EdgeInsets.only(top: 8), child: Text('Verify your identity first (Me → Become a verified host).', style: TextStyle(color: C.mute, fontSize: 12))),
-            ]),
-          ),
-        ),
-        const Section('Withdrawals'),
-        if (_payouts.isEmpty) const EmptyState('No withdrawals yet', icon: Icons.account_balance),
-        for (final p in _payouts)
-          ListTile(
-            title: Text('\$${p['amount_usd']} · ${p['method']}'),
-            subtitle: Text('${grouped(p['diamonds'] as num)} diamonds · ${'${p['created_at']}'.substring(0, 10)}'),
-            trailing: Text('${p['status']}', style: TextStyle(color: p['status'] == 'paid' ? C.emerald : p['status'] == 'rejected' ? C.ruby : C.gold, fontWeight: FontWeight.w700)),
-          ),
       ]),
     );
   }

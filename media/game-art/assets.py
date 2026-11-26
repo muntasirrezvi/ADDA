@@ -1063,6 +1063,119 @@ def bomb():
     render('bomb', yaw=math.radians(-15), elev=math.radians(20))
 
 
+@asset
+def crown():
+    reset(256)
+    g = gold('crown', 0.12)
+    # band
+    band = cyl(1, 0.5, (0, 0, 0), m=g, verts=96)
+    inner = cyl(0.86, 0.6, (0, 0, 0), verts=96)
+    md = band.modifiers.new('b', 'BOOLEAN'); md.operation = 'DIFFERENCE'; md.object = inner; md.solver = 'EXACT'
+    apply_all(band); bpy.data.objects.remove(inner)
+    bev(band, 0.03, 3); smooth(band)
+    torus(0.94, 0.07, (0, 0, -0.25), m=g); torus(0.94, 0.05, (0, 0, 0.25), m=g)
+    ruby = mat('ruby', (0.85, 0.02, 0.08), rough=0.0, trans=1.0, ior=1.77)
+    sapph = mat('sap', (0.05, 0.25, 0.95), rough=0.0, trans=1.0, ior=1.77)
+    for k in range(5):
+        a = k * 2 * math.pi / 5 - math.pi / 2
+        x, y = 0.93 * math.cos(a), 0.93 * math.sin(a)
+        sp = cone(0.32, 0.0, 0.9, (x, y, 0.7), m=g, verts=32)
+        sp.scale = (1, 0.45, 1)
+        sp.rotation_euler = (0, 0, a + math.pi / 2)
+        sphere(0.12, (x * 1.0, y * 1.0, 1.18), m=g)
+        gm = sphere(0.13, (x * 1.06, y * 1.06, 0.0), m=ruby if k % 2 == 0 else sapph)
+        gm.scale = (1, 1, 1.3)
+    root = group([o for o in bpy.context.scene.objects], 'root')
+    root.rotation_euler = (math.radians(-8), 0, 0)
+    render('crown', yaw=0, elev=math.radians(14))
+
+
+LK = {'red': (0.95, 0.12, 0.12), 'green': (0.1, 0.72, 0.25), 'yellow': (1.0, 0.8, 0.05), 'blue': (0.1, 0.45, 0.98)}
+
+
+def _vivid():
+    sc = bpy.context.scene
+    sc.view_settings.view_transform = 'Standard'
+    sc.view_settings.look = 'None'
+    sc.world.node_tree.nodes['Background'].inputs[1].default_value = 0.25
+
+
+@asset
+def lk_pins():
+    for name, col in LK.items():
+        reset(256)
+        _vivid()
+        m = mat(name, col, rough=0.3, coat=0.25)
+        prof = []
+        for i in range(41):
+            t = i / 40
+            if t < 0.55:   # pointed lower half
+                z = -1.3 + t / 0.55 * 1.3
+                r = 0.62 * math.sin(math.pi / 2 * (t / 0.55)) ** 1.6
+            else:          # round head
+                a = (t - 0.55) / 0.45 * math.pi / 2
+                z = 0.62 * math.sin(a)
+                r = 0.62 * math.cos(a)
+            prof.append((r, z))
+        prof[-1] = (0.0, prof[-1][1])
+        revolve(prof, m)
+        w = mat('w', (0.97, 0.97, 0.97), rough=0.25, coat=0.6)
+        d = cyl(0.27, 0.06, (0, -0.6, 0.05), m=w, verts=48, rot=(math.radians(90), 0, 0))
+        bev(d, 0.02); smooth(d)
+        base = cyl(0.42, 0.12, (0, 0, -1.3), m=m, verts=48)
+        bev(base, 0.04); smooth(base)
+        render(f'lk_pin_{name}', yaw=0, elev=math.radians(18), floor=True)
+
+
+@asset
+def lk_board():
+    reset(1024, samples=40)
+    _vivid()
+    white = mat('white', (0.97, 0.97, 0.97), rough=0.5)
+    edge = mat('edge', (0.12, 0.12, 0.16), rough=0.4)
+    mats = {k: mat(k, c, rough=0.45) for k, c in LK.items()}
+    light = {k: mat(k + 'l', tuple(0.35 + 0.65 * v for v in c), rough=0.5) for k, c in LK.items()}
+    cube((15.4, 15.4, 0.3), (0, 0, -0.28), m=edge, bevel=0.1)
+    cube((15.0, 15.0, 0.1), (0, 0, -0.1), m=mat('grid', (0.55, 0.55, 0.6), rough=0.5))
+    def xy(c, r):
+        return (c - 7, 7 - r)
+    yards = {'red': (0, 0), 'green': (9, 0), 'yellow': (9, 9), 'blue': (0, 9)}
+    for k, (c0, r0) in yards.items():
+        x, y = xy(c0 + 2.5, r0 + 2.5)
+        cube((5.96, 5.96, 0.2), (x, y, 0), m=mats[k], bevel=0.04)
+        cube((4.1, 4.1, 0.08), (x, y, 0.12), m=white, bevel=0.35, seg=6)
+        for dx, dy in ((-0.9, -0.9), (0.9, -0.9), (-0.9, 0.9), (0.9, 0.9)):
+            c = cyl(0.62, 0.05, (x + dx, y - dy, 0.18), m=light[k], verts=48)
+            bev(c, 0.02)
+            ring = torus(0.62, 0.05, (x + dx, y - dy, 0.2), m=mats[k])
+    colored = ludo_cells()
+    for c in range(15):
+        for r in range(15):
+            if ((c < 6 or c > 8) and (r < 6 or r > 8)) or (6 <= c <= 8 and 6 <= r <= 8):
+                continue
+            x, y = xy(c, r)
+            k = colored.get((c, r))
+            cube((0.95, 0.95, 0.16), (x, y, 0), m=mats[k] if k else white, bevel=0.03, seg=2)
+    # safe stars (grey outline style) and start arrows
+    grey = mat('grey', (0.6, 0.6, 0.65), rough=0.4)
+    for (c, r) in ((2, 8), (6, 2), (12, 6), (8, 12)):
+        x, y = xy(c, r)
+        s = star_mesh(grey, 0.04); s.scale = (0.36, 0.36, 1); s.location = (x, y, 0.1)
+    wm = mat('wa', (1, 1, 1), rough=0.3)
+    for (c, r, ang) in ((1, 6, 0), (8, 1, -90), (13, 8, 180), (6, 13, 90)):
+        x, y = xy(c, r)
+        s = star_mesh(wm, 0.04); s.scale = (0.3, 0.3, 1); s.location = (x, y, 0.1)
+    tri = {'red': [(-1.5, 1.5), (-1.5, -1.5)], 'green': [(-1.5, 1.5), (1.5, 1.5)],
+           'yellow': [(1.5, 1.5), (1.5, -1.5)], 'blue': [(1.5, -1.5), (-1.5, -1.5)]}
+    for k, ((x1, y1), (x2, y2)) in tri.items():
+        me = bpy.data.meshes.new('tri'); bm = bmesh.new()
+        vs = [bm.verts.new((0, 0, 0.3)), bm.verts.new((x1, y1, 0.08)), bm.verts.new((x2, y2, 0.08))]
+        bm.faces.new(vs); bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me); bm.free()
+        o = link(bpy.data.objects.new('tri', me)); give(o, mats[k])
+        if o.data.polygons[0].normal.z < 0: o.data.flip_normals()
+    render('lk_board', view='top', ortho=16.0)
+
+
 if __name__ == '__main__':
     names = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else list(A)
     for n in names:

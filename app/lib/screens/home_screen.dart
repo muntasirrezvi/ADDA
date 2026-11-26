@@ -7,8 +7,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'games_kit.dart';
 import 'inbox_screen.dart';
 import 'leaderboard_screen.dart';
+import 'rewards.dart';
 import 'room_screen.dart';
 import 'wallet_screen.dart';
 
@@ -47,7 +49,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     });
     _load();
     _auto = Timer.periodic(const Duration(seconds: 45), (_) => _loadRooms(_tabKeys[_tabs.index], quiet: true));
+    // pop the reward calendar once per app start when today's reward is waiting
+    if (!_rewardShown) {
+      _rewardShown = true;
+      Future.delayed(const Duration(milliseconds: 1200), () {
+        if (mounted) showDailyRewards(context, onlyIfReady: true);
+      });
+    }
   }
+
+  static bool _rewardShown = false;
 
   @override
   void dispose() {
@@ -75,14 +86,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  Future<void> _checkin() async {
-    await attempt(context, () async {
-      final r = Map<String, dynamic>.from(await App.i.rpc('daily_checkin') as Map);
-      if (r['ok'] != true) throw Exception(r['error'] ?? 'Come back tomorrow');
-      await App.i.refreshWallet();
-      if (mounted) toast(context, 'Day ${r['day']} reward: +${compact(r['reward'] as num)} coins');
-    });
-  }
+  Future<void> _checkin() => showDailyRewards(context);
 
   void _banner(Map<String, dynamic> b) {
     final a = (b['action'] as String?) ?? '';
@@ -128,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 titleSpacing: 16,
                 title: ShaderMask(shaderCallback: (r) => C.goldGrad.createShader(r), child: Text('Adda', style: serif(30, color: Colors.white))),
                 actions: [
-                  IconButton(tooltip: 'Daily reward', onPressed: _checkin, icon: const Icon(Icons.card_giftcard, color: C.gold)),
+                  IconButton(tooltip: 'Daily reward', onPressed: _checkin, icon: Floaty(amp: 2, child: art('coins_pile', size: 30))),
                   ValueListenableBuilder<int>(
                     valueListenable: App.i.coins,
                     builder: (_, c, __) => GestureDetector(

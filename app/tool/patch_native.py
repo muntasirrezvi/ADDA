@@ -120,4 +120,25 @@ if podfile.exists():
             "    end",
         )
         podfile.write_text(pf)
+# iOS 15+ (Agora and the camera plugins need a recent iOS) and the same app id as Android
+if podfile.exists():
+    pf = podfile.read_text()
+    pf2 = re.sub(r"^#?\s*platform :ios, '[0-9.]+'", "platform :ios, '15.0'", pf, flags=re.M)
+    if "platform :ios" not in pf2:
+        pf2 = "platform :ios, '15.0'\n" + pf2
+    if "IPHONEOS_DEPLOYMENT_TARGET" not in pf2:
+        pf2 = pf2.replace(
+            "flutter_additional_ios_build_settings(target)\n",
+            "flutter_additional_ios_build_settings(target)\n"
+            "    target.build_configurations.each do |config|\n"
+            "      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'\n"
+            "    end\n", 1)
+    podfile.write_text(pf2)
+pbx = root / "ios/Runner.xcodeproj/project.pbxproj"
+if pbx.exists():
+    t = pbx.read_text()
+    t = re.sub(r"PRODUCT_BUNDLE_IDENTIFIER = app\.adda\.adda;", "PRODUCT_BUNDLE_IDENTIFIER = app.adda.voice;", t)
+    t = re.sub(r"IPHONEOS_DEPLOYMENT_TARGET = [0-9.]+;", "IPHONEOS_DEPLOYMENT_TARGET = 15.0;", t)
+    pbx.write_text(t)
+
 print("patched", man.relative_to(root))

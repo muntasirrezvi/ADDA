@@ -70,7 +70,7 @@ Future<void> openGames(BuildContext context, {int? roomId}) async {
           _grid([
             _GameTile('Lucky Bag', 'luckybag', 'Share coins', const Color(0xFFB0122B), () => _party(ctx, context, roomId, 'luckybag')),
             _GameTile('PK Battle', 'vs', 'Gift battle', const Color(0xFF2A3FB8), () => _party(ctx, context, roomId, 'pk')),
-            _GameTile('Ludo', 'pawn_red', '2–4 players', const Color(0xFF1E7A3A), () => _party(ctx, context, roomId, 'ludo')),
+            _GameTile('Ludo', 'lk_pin_red', '2–4 players', const Color(0xFF1E7A3A), () => _party(ctx, context, roomId, 'ludo')),
             _GameTile('Tic-Tac-Toe', 'piece_x', '1 vs 1', const Color(0xFF7A1E45), () => _party(ctx, context, roomId, 'ttt')),
             _GameTile('Rock Paper Scissors', 'rps_scissors', '1 vs 1', const Color(0xFF4A4A55), () => _party(ctx, context, roomId, 'rps')),
             _GameTile('Spin the Bottle', 'bottle', 'Truth or dare', const Color(0xFF0E5A4A), () => _party(ctx, context, roomId, 'bottle')),

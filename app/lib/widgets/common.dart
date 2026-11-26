@@ -234,3 +234,24 @@ Future<bool> confirm(BuildContext context, String title, String body, {String ye
   );
   return r ?? false;
 }
+
+/// Gold "HOST" pill shown next to the room owner's name inside their room.
+class HostTag extends StatelessWidget {
+  const HostTag({super.key, this.small = false});
+  final bool small;
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: EdgeInsets.symmetric(horizontal: small ? 5 : 7, vertical: small ? 1 : 2),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [Color(0xFFFFE7A0), Color(0xFFE0A93A), Color(0xFFB37514)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFFFF3C8), width: .8),
+          boxShadow: const [BoxShadow(color: Color(0x66E0A93A), blurRadius: 6)],
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Image.asset('assets/games/crown.webp', width: small ? 10 : 13, height: small ? 10 : 13),
+          const SizedBox(width: 2),
+          Text('HOST', style: TextStyle(fontSize: small ? 8.5 : 10, fontWeight: FontWeight.w900, letterSpacing: .6, color: const Color(0xFF3A2406))),
+        ]),
+      );
+}
