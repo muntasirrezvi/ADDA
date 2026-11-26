@@ -58,47 +58,84 @@ jobs:
           publish_branch: gh-pages
           force_orphan: true
 
+  # Android. Code-only changes go out as Shorebird patches (the installed app updates itself on the
+  # next restart). Changes to packages, pictures, sounds or native settings, or a commit message with
+  # [release], make a full new APK instead.
   android:
     runs-on: ubuntu-latest
-    permissions: { contents: write }   # to publish the download link
+    permissions: { contents: write }   # to publish the download link and move the release marker
     defaults: { run: { working-directory: app } }
+    env:
+      SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+      DEFINES: --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
     steps:
       - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
       - uses: actions/setup-java@v5
         with: { distribution: temurin, java-version: "17" }
       - uses: subosito/flutter-action@v2
         with: { channel: stable, cache: true }
+      - uses: shorebirdtech/setup-shorebird@v1
+        with: { cache: true }
       - run: bash tool/setup.sh
       - run: flutter pub get
       - name: Analyze (errors fail the build)
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
-      - name: Build APK
-        run: >
-          flutter build apk --release --split-per-abi
-          --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-          --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+      - name: Patch or full release?
+        id: mode
+        run: |
+          git fetch --tags --force >/dev/null 2>&1 || true
+          last=$(git rev-parse -q --verify refs/tags/sb-release || true)
+          mode=patch
+          if [ -z "$last" ]; then mode=release; reason="first release"
+          elif git log -1 --format=%B | grep -qi '\[release\]'; then mode=release; reason="[release] in commit message"
+          elif [ -n "$(git diff --name-only "$last" HEAD -- pubspec.yaml assets tool)" ]; then mode=release; reason="packages, assets or native settings changed"
+          else reason="code-only change since the last release"; fi
+          before="${{ github.event.before }}"
+          if [ "$mode" = patch ] && git cat-file -e "$before" 2>/dev/null && [ -z "$(git diff --name-only "$before" HEAD -- .)" ]; then
+            mode=none; reason="nothing in the app changed"
+          fi
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then mode=build; fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "### Android: $mode ($reason)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Shorebird patch
+        id: patch
+        if: steps.mode.outputs.mode == 'patch'
+        continue-on-error: true
+        run: shorebird patch android --release-version=latest $DEFINES
+      - name: Shorebird release (full APK)
+        id: release
+        if: steps.mode.outputs.mode == 'release' || steps.patch.outcome == 'failure'
+        run: |
+          shorebird release android --artifact=apk --target-platform=android-arm64 --build-number=${{ github.run_number }} $DEFINES
+          mkdir -p ../dist && cp build/app/outputs/flutter-apk/app-release.apk ../dist/adda.apk
+      - name: Old phones APK (32-bit, not patchable)
+        if: steps.mode.outputs.mode != 'patch' || steps.patch.outcome == 'failure'
+        run: |
+          flutter build apk --release --target-platform android-arm $DEFINES
+          mkdir -p ../dist && cp build/app/outputs/flutter-apk/app-release.apk ../dist/adda-old-phones.apk
+      - name: Plain build (branches)
+        if: steps.mode.outputs.mode == 'build'
+        run: flutter build apk --release --split-per-abi $DEFINES
       - uses: actions/upload-artifact@v5
-        with:
-          name: adda-apk
-          path: app/build/app/outputs/flutter-apk/app-*-release.apk
-      # Same link every time, always the newest build from main:
-      #   https://github.com/<owner>/<repo>/releases/download/latest/adda.apk
-      - name: Publish the test download link
-        if: github.ref == 'refs/heads/main'
+        if: steps.release.outcome == 'success'
+        with: { name: adda-apk, path: dist/*.apk }
+      # Same link every time:  https://github.com/<owner>/<repo>/releases/download/latest/adda.apk
+      - name: Publish the download link
+        if: steps.release.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          cd build/app/outputs/flutter-apk
-          cp app-arm64-v8a-release.apk adda.apk
-          cp app-armeabi-v7a-release.apk adda-old-phones.apk
-          notes="Test build $(date -u '+%Y-%m-%d %H:%M') UTC from commit ${GITHUB_SHA::7}. Install adda.apk; use adda-old-phones.apk only if it does not install."
+          cd ../dist
+          notes="Build $(date -u '+%Y-%m-%d %H:%M') UTC from commit ${GITHUB_SHA::7}. Install adda.apk (it updates itself after this); adda-old-phones.apk only if adda.apk does not install."
           if gh release view latest >/dev/null 2>&1; then
             gh release upload latest adda.apk adda-old-phones.apk --clobber
             gh release edit latest --notes "$notes"
           else
             gh release create latest adda.apk adda-old-phones.apk --prerelease --title "Adda test build" --notes "$notes"
           fi
+          git tag -f sb-release "$GITHUB_SHA" && git push -f origin refs/tags/sb-release
 
   # iPhone build. Not signed: install it with Sideloadly or AltStore using your Apple ID,
   # or add signing + TestFlight later with a paid Apple Developer account.
