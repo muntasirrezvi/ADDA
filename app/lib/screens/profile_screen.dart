@@ -666,7 +666,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           },
         ),
         const SizedBox(height: 20),
-        const Center(child: Text('Adda 1.0.0', style: TextStyle(color: C.mute, fontSize: 12))),
+        const Center(child: Text('Adda 1.0.0 · auto-updates on', style: TextStyle(color: C.mute, fontSize: 12))),
       ]),
     );
   }
