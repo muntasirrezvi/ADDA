@@ -274,3 +274,39 @@ select ai_avatar_quota();
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 select jsonb_object_keys(admin_user_detail('00000000-0000-0000-0000-00000000000c')) k order by 1;
 select admin_user_detail('00000000-0000-0000-0000-00000000000c')->'stats';
+-- presence, room people, transfers, agent store, exchange, custom top-up
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+select touch_presence();
+select set_presence_privacy(true);
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
+select online, last_seen is null as time_hidden, hidden from user_presence(array['00000000-0000-0000-0000-00000000000c'::uuid]);
+select (join_room(:rid)).listeners as listeners_after_join;
+select room_ping(:rid);
+select jsonb_array_length(room_people(:rid)->'active') as active_n;
+select leave_room(:rid);
+select jsonb_array_length(room_people(:rid)->'left') as left_n;
+-- admin grants unlimited coins + diamonds, makes c an agent and fills the store
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select admin_grant('00000000-0000-0000-0000-00000000000d', 999000000000, 5000, 'test');
+select admin_set_role('00000000-0000-0000-0000-00000000000c', 'agent');
+select admin_stock('00000000-0000-0000-0000-00000000000c', 50000000, 1000, 'load');
+select (find_user((select public_id from profiles where id = '00000000-0000-0000-0000-00000000000b')))->>'username' as found;
+-- agent sends from store
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+select store_transfer((select public_id from profiles where id = '00000000-0000-0000-0000-00000000000b'), 1000000, 10, 'promo');
+select (my_store())->'coins' as store_coins_left, (my_store())->'diamonds' as store_dia_left;
+\set ON_ERROR_STOP 0
+select store_transfer((select public_id from profiles where id = '00000000-0000-0000-0000-00000000000b'), 999999999999, 0);
+\set ON_ERROR_STOP 1
+-- user to user
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
+select user_transfer((select public_id from profiles where id = '00000000-0000-0000-0000-00000000000b'), 50000, 3, 'hi');
+\set ON_ERROR_STOP 0
+select user_transfer((select public_id from profiles where id = '00000000-0000-0000-0000-00000000000d'), 50000, 0);
+\set ON_ERROR_STOP 1
+select exchange_coins(2);
+select custom_topup_quote('coins', 123456), custom_topup_quote('diamonds', 1);
+select jsonb_array_length((wallet_info())->'recent') as my_transfers;
+reset role;
+select kind, coins, diamonds from coin_transfers order by id;

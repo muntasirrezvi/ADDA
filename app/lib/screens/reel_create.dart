@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:video_player/video_player.dart';
@@ -106,6 +107,21 @@ class _ReelCreateScreenState extends State<ReelCreateScreen> {
     }
   }
 
+  /// Pick a video already on the phone and post it as a reel (keeps its own sound).
+  Future<void> _upload() async {
+    final x = await ImagePicker().pickVideo(source: ImageSource.gallery, maxDuration: const Duration(minutes: 3));
+    if (x == null || !mounted) return;
+    final size = await File(x.path).length();
+    if (size > 50 * 1024 * 1024) {
+      if (mounted) toast(context, 'That video is over 50 MB. Please trim it or pick a shorter one.', bad: true);
+      return;
+    }
+    await _music.pause();
+    if (!mounted) return;
+    final posted = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => _ReelPost(path: x.path, track: null)));
+    if (posted == true && mounted) Navigator.pop(context);
+  }
+
   Future<void> _stop() async {
     final c = _cam;
     if (c == null || !_recording) return;
@@ -184,8 +200,10 @@ class _ReelCreateScreenState extends State<ReelCreateScreen> {
               ),
             ]),
             const Spacer(),
-            Text(_recording ? '${_elapsed.toStringAsFixed(1)}s' : 'Tap to record · up to $maxSeconds s', style: const TextStyle(color: Colors.white70)),
+            Text(_recording ? '${_elapsed.toStringAsFixed(1)}s' : 'Tap to record · up to $maxSeconds s, or upload a video', style: const TextStyle(color: Colors.white70)),
             const SizedBox(height: 14),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+            _SideButton(icon: Icons.photo_library, label: 'Upload', onTap: _recording ? null : _upload),
             GestureDetector(
               onTap: _recording ? _stop : _start,
               child: AnimatedContainer(
@@ -200,6 +218,8 @@ class _ReelCreateScreenState extends State<ReelCreateScreen> {
                 ),
               ),
             ),
+            _SideButton(icon: Icons.music_note, label: _track == null ? 'Music' : 'Change', onTap: _recording ? null : _pickTrack),
+            ]),
             const SizedBox(height: 30),
           ]),
         ),
@@ -340,8 +360,9 @@ class _ReelPostState extends State<_ReelPost> {
     setState(() => _busy = true);
     final ok = await attempt(context, () async {
       final bytes = await File(widget.path).readAsBytes();
-      if (bytes.length > 95 * 1024 * 1024) throw Exception('This video is too large');
-      final ext = widget.path.toLowerCase().endsWith('.mov') ? 'mov' : 'mp4';
+      if (bytes.length > 50 * 1024 * 1024) throw Exception('This video is over 50 MB');
+      final low = widget.path.toLowerCase();
+      final ext = low.endsWith('.mov') ? 'mov' : low.endsWith('.webm') ? 'webm' : 'mp4';
       final url = await App.i.upload('reels', bytes, ext);
       await db.from('reels').insert({
         'user_id': myId,
@@ -393,4 +414,28 @@ class _ReelPostState extends State<_ReelPost> {
       ]),
     );
   }
+}
+
+class _SideButton extends StatelessWidget {
+  const _SideButton({required this.icon, required this.label, required this.onTap});
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        onTap: onTap,
+        child: Opacity(
+          opacity: onTap == null ? .4 : 1,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white24)),
+              child: Icon(icon, color: Colors.white),
+            ),
+            const SizedBox(height: 4),
+            Text(label, style: const TextStyle(fontSize: 12, color: Colors.white)),
+          ]),
+        ),
+      );
 }

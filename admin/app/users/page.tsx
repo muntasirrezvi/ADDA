@@ -59,6 +59,7 @@ function UserModal({ u, onClose }: { u: U; onClose: () => void }) {
   const me = useMe();
   const sup = me?.role === "admin";
   const [delta, setDelta] = useState("");
+  const [dia, setDia] = useState("");
   const [reason, setReason] = useState("");
   const [days, setDays] = useState("7");
   const [banReason, setBanReason] = useState("");
@@ -81,13 +82,16 @@ function UserModal({ u, onClose }: { u: U; onClose: () => void }) {
           </dl>
           {sup && (
             <div className="card">
-              <h3 className="mb">Adjust coins</h3>
+              <h3 className="mb">Give or take coins & diamonds</h3>
+              <p className="muted sm" style={{ marginTop: 0 }}>No limit. Use a minus sign to take back (e.g. -50000). The person gets a notification when you give.</p>
               <div className="row">
-                <input type="number" placeholder="+1000000 or -500000" value={delta} onChange={(e) => setDelta(e.target.value)} style={{ flex: 1 }} />
-                <input placeholder="Reason (required)" value={reason} onChange={(e) => setReason(e.target.value)} style={{ flex: 2 }} />
+                <input type="number" placeholder="Coins, e.g. 1000000" value={delta} onChange={(e) => setDelta(e.target.value)} style={{ flex: 1 }} />
+                <input type="number" placeholder="Diamonds, e.g. 50" value={dia} onChange={(e) => setDia(e.target.value)} style={{ flex: 1 }} />
               </div>
+              <input placeholder="Reason (optional, shown in the log)" value={reason} onChange={(e) => setReason(e.target.value)} style={{ marginTop: 8, width: "100%" }} />
               <div className="row end" style={{ marginTop: 8 }}>
-                <button className="gold sm" onClick={() => run(async () => { await rpc("admin_adjust_coins", { p_user: u.id, p_delta: Number(delta), p_reason: reason }); onClose(); }, "Balance updated")}>Apply</button>
+                {[1000000, 10000000, 100000000].map((v) => <button key={v} className="sm ghost" onClick={() => setDelta(String(v))}>{fmt(v)}</button>)}
+                <button className="gold sm" onClick={() => run(async () => { await rpc("admin_grant", { p_user: u.id, p_coins: Number(delta || 0), p_diamonds: Number(dia || 0), p_reason: reason }); onClose(); }, "Wallet updated")}>Apply</button>
               </div>
             </div>
           )}
@@ -105,7 +109,7 @@ function UserModal({ u, onClose }: { u: U; onClose: () => void }) {
             </div>
           </div>
           {sup && (
-            <Field label="Role" hint="Agents can sell coins from their stock. Moderators can use this console except money and settings.">
+            <Field label="Role" hint="user: normal member · host: verified host · agent: gets a coin & diamond store, handles top-ups and can send to users · moderator: can use this console except money and settings · admin: full access, unlimited store.">
               <div className="row">
                 <select value={role} onChange={(e) => setRole(e.target.value)} style={{ flex: 1 }}>{ROLES.map((r) => <option key={r}>{r}</option>)}</select>
                 <button className="sm" onClick={() => run(() => rpc("admin_set_role", { p_user: u.id, p_role: role }), "Role changed")}>Save role</button>

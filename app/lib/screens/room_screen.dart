@@ -8,6 +8,8 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../services/active_room.dart';
 import '../services/api.dart';
+import '../services/background.dart';
+import '../services/presence.dart';
 import '../services/rtc.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -16,6 +18,7 @@ import 'create_room.dart';
 import 'games.dart';
 import 'party_games.dart';
 import 'profile_screen.dart';
+import 'room_people.dart';
 import 'wallet_screen.dart';
 
 void openRoom(BuildContext context, int id) {
@@ -85,7 +88,12 @@ class _RoomScreenState extends State<RoomScreen> {
 
   Future<void> _open({String? password}) async {
     try {
-      _attach(await ActiveRoom.enter(_id, password: password));
+      final r = await ActiveRoom.enter(_id, password: password);
+      _attach(r);
+      // once per app session: may the room keep running when the app is in the background?
+      if (mounted && await BackgroundAudio.askForSession(context)) {
+        await BackgroundAudio.start('${r.room?['name'] ?? 'Voice room'}', micOn: r.mySeat != null && (r.rtc?.micOn.value ?? false));
+      }
     } on RoomPasswordNeeded {
       if (!mounted) return;
       final pw = await askText(context, 'Private room', hint: 'Room password', number: true, obscure: true);
@@ -255,6 +263,8 @@ class _RoomScreenState extends State<RoomScreen> {
               LevelBadge((p?['wealth_level'] as num?)?.toInt() ?? 1),
             ]),
             Text('ID ${p?['public_id'] ?? ''}', style: const TextStyle(color: C.mute, fontSize: 12)),
+            const SizedBox(height: 4),
+            PresenceText(uid),
             const SizedBox(height: 14),
             Row(children: [
               Expanded(child: OutlinedButton.icon(
@@ -430,10 +440,18 @@ class _RoomScreenState extends State<RoomScreen> {
             Text('ID $_id · ${owner?['username'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.white70)),
           ]),
         ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(color: Colors.black38, borderRadius: BorderRadius.circular(14)),
-          child: Row(children: [const Icon(Icons.people, size: 14), const SizedBox(width: 4), Text(compact(r['listeners'] as num? ?? 0), style: const TextStyle(fontSize: 12))]),
+        GestureDetector(
+          onTap: () => showRoomPeople(context, roomId: _id, onTapUser: (uid) => _userSheet(uid, _seats.where((s) => s['user_id'] == uid).firstOrNull?['seat'] as int?)),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+            decoration: BoxDecoration(color: Colors.black38, borderRadius: BorderRadius.circular(14), border: Border.all(color: Colors.white24)),
+            child: Row(children: [
+              const Icon(Icons.people, size: 14),
+              const SizedBox(width: 4),
+              Text(compact(r['listeners'] as num? ?? 0), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              const Icon(Icons.chevron_right, size: 14, color: Colors.white54),
+            ]),
+          ),
         ),
         IconButton(onPressed: _menu, icon: const Icon(Icons.more_horiz)),
         IconButton(tooltip: 'Minimise', onPressed: _minimise, icon: const Icon(Icons.close_fullscreen)),

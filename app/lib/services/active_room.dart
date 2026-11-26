@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -56,9 +56,18 @@ class ActiveRoom extends ChangeNotifier {
     }
     await Future.wait([r.loadSeats(), r._loadMessages(), r._loadGifts(), r.loadExtras()]);
     r._subscribe();
-    r._poll = Timer.periodic(const Duration(seconds: 30), (_) => r.refreshRoom());
+    r._poll = Timer.periodic(const Duration(seconds: 30), (_) => r._heartbeat());
     current.value = r;
     App.i.beforeSignOut = () async => current.value?.leave();
+    BackgroundAudio.onAction = (a) {
+      final cur = current.value;
+      if (cur == null) return;
+      if (a == 'leave') {
+        cur.leave();
+      } else if (a == 'mic' && cur.mySeat != null) {
+        cur.rtc?.setMic(!(cur.rtc?.micOn.value ?? true));
+      }
+    };
     unawaited(r._startVoice());
     return r;
   }
@@ -69,7 +78,8 @@ class ActiveRoom extends ChangeNotifier {
     try {
       if (isOwner) await Permission.microphone.request();
       await s.start();
-      await BackgroundAudio.start('${room?['name'] ?? 'Voice room'}');
+      s.micOn.addListener(() => BackgroundAudio.update(micOn: mySeat != null && s.micOn.value));
+      await BackgroundAudio.start('${room?['name'] ?? 'Voice room'}', micOn: mySeat != null && s.micOn.value);
       voiceError = null;
     } catch (e) {
       voiceError = errText(e);
@@ -79,6 +89,39 @@ class ActiveRoom extends ChangeNotifier {
 
   void _notify() {
     if (!_left) notifyListeners();
+  }
+
+  /// Tells the server we are still here (keeps the member list accurate) and refreshes the room.
+  Future<void> _heartbeat() async {
+    try {
+      final n = await App.i.rpc('room_ping', {'p_room': id});
+      if (room != null && n is num) room!['listeners'] = n;
+    } catch (_) {}
+    await refreshRoom();
+  }
+
+  bool? _micBeforePause;
+
+  /// Called by the app when it goes to the background or comes back.
+  static Future<void> onLifecycle(AppLifecycleState state) async {
+    final r = current.value;
+    if (r == null || r._left) return;
+    final s = r.rtc;
+    if (state == AppLifecycleState.detached) {
+      await r.leave();
+      return;
+    }
+    if (BackgroundAudio.allowed || s == null) return;
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      if (r._micBeforePause != null) return;
+      r._micBeforePause = s.micOn.value;
+      await s.setMic(false);
+      await s.engine?.muteAllRemoteAudioStreams(true);
+    } else if (state == AppLifecycleState.resumed && r._micBeforePause != null) {
+      await s.engine?.muteAllRemoteAudioStreams(false);
+      await s.setMic(r._micBeforePause!);
+      r._micBeforePause = null;
+    }
   }
 
   Future<void> refreshRoom() async {
@@ -202,6 +245,7 @@ class ActiveRoom extends ChangeNotifier {
     if (_left) return;
     _left = true;
     _poll?.cancel();
+    BackgroundAudio.onAction = null;
     if (_ch != null) await db.removeChannel(_ch!);
     await rtc?.stop();
     await BackgroundAudio.stop();

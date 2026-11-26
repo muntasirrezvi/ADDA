@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/api.dart';
+import '../services/presence.dart';
 import '../services/calls.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -221,7 +222,12 @@ class _ChatScreenState extends State<ChatScreen> {
           child: Row(children: [
             Avatar(profile: p, size: 36),
             const SizedBox(width: 10),
-            Expanded(child: Text('${p?['username'] ?? ''}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700))),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text('${p?['username'] ?? ''}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+                PresenceText(_o, size: 11),
+              ]),
+            ),
           ]),
         ),
         actions: [

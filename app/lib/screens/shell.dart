@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../services/api.dart';
 import '../theme.dart';
 import 'create_room.dart';
+import 'games_tab.dart';
 import 'home_screen.dart';
 import 'inbox_screen.dart';
 import 'profile_screen.dart';
@@ -61,7 +62,7 @@ class _ShellState extends State<Shell> {
               openCreateRoom(context);
             }),
             const SizedBox(height: 10),
-            _CreateTile(icon: Icons.videocam, title: 'Make a reel', sub: 'Record with trending music', onTap: () {
+            _CreateTile(icon: Icons.videocam, title: 'Make a reel', sub: 'Record with music or upload a video from your phone', onTap: () {
               Navigator.pop(ctx);
               Navigator.push(context, MaterialPageRoute(builder: (_) => const ReelCreateScreen()));
             }),
@@ -73,28 +74,35 @@ class _ShellState extends State<Shell> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = [const HomeScreen(), ReelsScreen(active: _tab == 1), const SizedBox(), const InboxScreen(), const MeScreen()];
+    final pages = [
+      const HomeScreen(),
+      ReelsScreen(active: _tab == 1),
+      GamesTab(openRooms: () => setState(() => _tab = 0)),
+      const InboxScreen(),
+      const MeScreen(),
+    ];
     return Scaffold(
       body: IndexedStack(index: _tab, children: pages),
+      floatingActionButton: _tab == 0
+          ? FloatingActionButton.extended(
+              onPressed: _create,
+              backgroundColor: C.gold,
+              foregroundColor: const Color(0xFF1A1206),
+              icon: const Icon(Icons.add),
+              label: const Text('Create', style: TextStyle(fontWeight: FontWeight.w900)),
+            )
+          : null,
       bottomNavigationBar: ValueListenableBuilder<int>(
         valueListenable: App.i.unread,
         builder: (context, unread, _) => NavigationBar(
           selectedIndex: _tab,
           height: 66,
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          onDestinationSelected: (i) => i == 2 ? _create() : setState(() => _tab = i),
+          onDestinationSelected: (i) => setState(() => _tab = i),
           destinations: [
-            const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Rooms'),
+            const NavigationDestination(icon: Icon(Icons.mic_none), selectedIcon: Icon(Icons.mic), label: 'Rooms'),
             const NavigationDestination(icon: Icon(Icons.play_circle_outline), selectedIcon: Icon(Icons.play_circle), label: 'Reels'),
-            NavigationDestination(
-              icon: Container(
-                width: 46,
-                height: 34,
-                decoration: BoxDecoration(gradient: C.goldGrad, borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.add, color: Color(0xFF1A1206)),
-              ),
-              label: 'Create',
-            ),
+            const NavigationDestination(icon: Icon(Icons.sports_esports_outlined), selectedIcon: Icon(Icons.sports_esports), label: 'Games'),
             NavigationDestination(
               icon: Badge(isLabelVisible: unread > 0, label: Text(unread > 99 ? '99+' : '$unread'), child: const Icon(Icons.chat_bubble_outline)),
               selectedIcon: const Icon(Icons.chat_bubble),

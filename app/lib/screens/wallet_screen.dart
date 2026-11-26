@@ -12,6 +12,8 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'wallet_tools.dart';
+import 'withdraw_screen.dart';
 
 const methodNames = {'bkash': 'bKash', 'nagad': 'Nagad', 'rocket': 'Rocket', 'upay': 'Upay', 'bank': 'Bank transfer', 'usdt': 'USDT (TRC20)'};
 const methodColors = {
@@ -138,32 +140,51 @@ class _WalletScreenState extends State<WalletScreen> {
         onRefresh: _load,
         child: ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 40), children: [
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(22),
               gradient: const LinearGradient(colors: [Color(0xFF3A2A12), Color(0xFF15100A)], begin: Alignment.topLeft, end: Alignment.bottomRight),
               border: Border.all(color: C.gold2.withValues(alpha: .5)),
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('COIN BALANCE', style: TextStyle(color: C.mute, letterSpacing: 2, fontSize: 11)),
-              const SizedBox(height: 6),
-              ValueListenableBuilder<int>(
-                valueListenable: App.i.coins,
-                builder: (_, c, __) => Row(children: [
-                  const Icon(Icons.monetization_on, color: C.gold, size: 30),
-                  const SizedBox(width: 8),
-                  Flexible(child: FittedBox(child: Text(grouped(c), style: serif(34, color: C.gold)))),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('COINS', style: TextStyle(color: C.mute, letterSpacing: 2, fontSize: 11)),
+                  const SizedBox(height: 4),
+                  ValueListenableBuilder<int>(valueListenable: App.i.coins, builder: (_, c, __) => FittedBox(child: CoinText(grouped(c), size: 26))),
+                  const Text('For gifts, games and rooms', style: TextStyle(color: C.mute, fontSize: 11)),
                 ]),
               ),
-              const SizedBox(height: 10),
-              Row(children: [
-                ValueListenableBuilder<int>(valueListenable: App.i.diamonds, builder: (_, d, __) => CoinText(grouped(d), diamond: true)),
-                const Spacer(),
-                TextButton(onPressed: _exchange, child: const Text('Exchange diamonds', style: TextStyle(color: C.gold))),
-              ]),
+              Container(width: 1, height: 54, color: C.line),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('DIAMONDS', style: TextStyle(color: C.mute, letterSpacing: 2, fontSize: 11)),
+                  const SizedBox(height: 4),
+                  ValueListenableBuilder<int>(valueListenable: App.i.diamonds, builder: (_, d, __) => FittedBox(child: CoinText(grouped(d), size: 26, diamond: true))),
+                  const Text('Earned from gifts · can withdraw', style: TextStyle(color: C.mute, fontSize: 11)),
+                ]),
+              ),
             ]),
           ),
-          const Section('Recharge'),
+          const SizedBox(height: 12),
+          GridView.count(
+            crossAxisCount: 4,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 8,
+            crossAxisSpacing: 8,
+            childAspectRatio: .86,
+            children: [
+              _Action(icon: Icons.tune, label: 'Custom\namount', color: const Color(0xFFE0A93A), onTap: () => showCustomTopup(context, _methods)),
+              _Action(icon: Icons.swap_vert, label: 'Exchange', color: const Color(0xFF7FB0FF), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ExchangeScreen()))),
+              _Action(icon: Icons.send, label: 'Send to\nfriend', color: const Color(0xFF3DDC84), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SendScreen()))),
+              _Action(icon: Icons.account_balance, label: 'Withdraw', color: const Color(0xFFE0485A), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EarningsScreen()))),
+            ],
+          ),
+          const Section('Recharge coins'),
+          const Text('Pick a package, pay a verified agent with bKash, Nagad or others, and coins arrive in minutes.', style: TextStyle(color: C.mute, fontSize: 12)),
+          const SizedBox(height: 8),
           if (_loading)
             const Padding(padding: EdgeInsets.all(30), child: Center(child: CircularProgressIndicator(color: C.gold)))
           else
@@ -215,17 +236,33 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  Future<void> _exchange() async {
-    final d = App.i.diamonds.value;
-    final rate = App.i.number('diamond_to_coins', 1);
-    final v = await askText(context, 'Exchange diamonds', hint: 'You have ${grouped(d)}. 1 diamond = $rate coin', number: true);
-    final n = int.tryParse(v ?? '');
-    if (n == null || !mounted) return;
-    await attempt(context, () async {
-      await App.i.rpc('exchange_diamonds', {'p_diamonds': n});
-      await App.i.refreshWallet();
-    }, ok: 'Exchanged');
-  }
+}
+
+class _Action extends StatelessWidget {
+  const _Action({required this.icon, required this.label, required this.color, required this.onTap});
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Material(
+        color: C.card,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: .16)),
+              child: Icon(icon, color: color, size: 22),
+            ),
+            const SizedBox(height: 6),
+            Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, height: 1.15)),
+          ]),
+        ),
+      );
 }
 
 class _MethodTile extends StatelessWidget {
@@ -375,7 +412,7 @@ class _TopupOrderScreenState extends State<TopupOrderScreen> {
                 Row(children: [const Icon(Icons.info_outline, size: 16, color: C.gold), const SizedBox(width: 6), Expanded(child: Text('${o['instructions']}', style: const TextStyle(fontSize: 13)))]),
               ],
               const SizedBox(height: 14),
-              Text('You will get ${grouped(o['coins'] as num)} coins.', style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text(o['kind'] == 'diamonds' ? 'You will get ${grouped(o['diamonds'] as num)} diamonds.' : 'You will get ${grouped(o['coins'] as num)} coins.', style: const TextStyle(fontWeight: FontWeight.w700)),
             ]),
           ),
           const Section('3. Confirm your payment'),
@@ -455,7 +492,7 @@ class TopupHistoryScreen extends StatelessWidget {
               final r = rows[i];
               final st = r['status'] as String;
               return ListTile(
-                title: Text('${grouped(r['coins'] as num)} coins'),
+                title: Text(r['kind'] == 'diamonds' ? '${grouped(r['diamonds'] as num)} diamonds' : '${grouped(r['coins'] as num)} coins'),
                 subtitle: Text('${methodNames[r['method']] ?? r['method']} · ${r['currency'] == 'USD' ? '\$' : '৳'}${r['amount']} · ${'${r['created_at']}'.substring(0, 10)}'),
                 trailing: Text(st.replaceAll('_', ' '), style: TextStyle(color: st == 'approved' ? C.emerald : st == 'rejected' ? C.ruby : C.mute, fontWeight: FontWeight.w700)),
                 onTap: st == 'awaiting_payment' || st == 'submitted'

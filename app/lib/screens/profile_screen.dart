@@ -5,13 +5,19 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api.dart';
+import '../services/background.dart';
 import '../services/calls.dart';
+import '../services/presence.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'avatar_studio.dart';
+import 'games_tab.dart';
 import 'inbox_screen.dart';
+import 'leaderboard_screen.dart';
 import 'reels_screen.dart';
+import 'rewards.dart';
 import 'wallet_screen.dart';
+import 'wallet_tools.dart';
 import 'withdraw_screen.dart';
 
 /// Your own profile tab.
@@ -185,6 +191,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           if (p['role'] == 'agent') _tag('COIN AGENT', C.emerald),
                           Text('ID ${p['public_id']}${p['country'] != null ? ' · ${p['country']}' : ''}', style: const TextStyle(color: C.mute, fontSize: 12)),
                         ]),
+                        const SizedBox(height: 4),
+                        PresenceText(widget.userId),
                       ]),
                     ),
                   ]),
@@ -288,25 +296,88 @@ class _MyMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final me = App.i.me.value ?? {};
-    Widget tile(IconData icon, String title, String? sub, VoidCallback onTap) => ListTile(
+    final agent = me['role'] == 'agent' || me['role'] == 'admin';
+    void go(Widget w) => Navigator.push(context, MaterialPageRoute(builder: (_) => w)).then((_) => onChanged());
+    Widget tile(IconData icon, Color color, String title, String sub, VoidCallback onTap) => ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-          leading: Icon(icon, color: C.gold),
-          title: Text(title),
-          subtitle: sub == null ? null : Text(sub, style: const TextStyle(color: C.mute, fontSize: 12)),
+          leading: Container(width: 38, height: 38, decoration: BoxDecoration(color: color.withValues(alpha: .15), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: color, size: 20)),
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: Text(sub, style: const TextStyle(color: C.mute, fontSize: 12)),
           trailing: const Icon(Icons.chevron_right, color: C.mute),
           onTap: onTap,
         );
-    return Container(
-      decoration: BoxDecoration(color: C.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: C.line)),
-      child: Column(children: [
-        ValueListenableBuilder<int>(
-          valueListenable: App.i.diamonds,
-          builder: (_, d, __) => tile(Icons.diamond, 'Diamonds & withdraw', '${grouped(d)} diamonds', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EarningsScreen()))),
+    Widget group(String title, List<Widget> children) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(padding: const EdgeInsets.fromLTRB(4, 16, 4, 6), child: Text(title.toUpperCase(), style: const TextStyle(color: C.mute, fontSize: 12, letterSpacing: 1.5, fontWeight: FontWeight.w700))),
+          Container(
+            decoration: BoxDecoration(color: C.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: C.line)),
+            child: Column(children: children),
+          ),
+        ]);
+    Widget quick(IconData icon, String label, Color color, VoidCallback onTap) => Expanded(
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(children: [
+                Container(width: 40, height: 40, decoration: BoxDecoration(shape: BoxShape.circle, color: color.withValues(alpha: .16)), child: Icon(icon, color: color, size: 20)),
+                const SizedBox(height: 4),
+                Text(label, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          ),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // wallet at a glance
+      GestureDetector(
+        onTap: () => go(const WalletScreen()),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 6),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [Color(0xFF3A2A12), Color(0xFF15100A)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: C.gold2.withValues(alpha: .5)),
+          ),
+          child: Column(children: [
+            Row(children: [
+              const Text('MY WALLET', style: TextStyle(color: C.mute, letterSpacing: 2, fontSize: 11)),
+              const Spacer(),
+              const Text('Open', style: TextStyle(color: C.gold, fontSize: 12)),
+              const Icon(Icons.chevron_right, color: C.gold, size: 18),
+            ]),
+            const SizedBox(height: 6),
+            Row(children: [
+              Expanded(child: ValueListenableBuilder<int>(valueListenable: App.i.coins, builder: (_, c, __) => CoinText(grouped(c), size: 20))),
+              Expanded(child: ValueListenableBuilder<int>(valueListenable: App.i.diamonds, builder: (_, d, __) => CoinText(grouped(d), size: 20, diamond: true))),
+            ]),
+            const SizedBox(height: 6),
+            Row(children: [
+              quick(Icons.add_card, 'Recharge', C.gold, () => go(const WalletScreen())),
+              quick(Icons.send, 'Send', const Color(0xFF3DDC84), () => go(const SendScreen())),
+              quick(Icons.swap_vert, 'Exchange', const Color(0xFF7FB0FF), () => go(const ExchangeScreen())),
+              quick(Icons.account_balance, 'Withdraw', const Color(0xFFE0485A), () => go(const EarningsScreen())),
+            ]),
+          ]),
         ),
-        if (me['verified'] != true) tile(Icons.verified_user, 'Become a verified host', 'Verify your identity to withdraw earnings', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VerifyScreen()))),
-        tile(Icons.receipt_long, 'Top-up history', null, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TopupHistoryScreen()))),
+      ),
+      group('Rewards & fun', [
+        tile(Icons.card_giftcard, C.gold, 'Daily reward', 'Collect free coins every day — more each day for 7 days', () => showDailyRewards(context)),
+        tile(Icons.emoji_events, const Color(0xFFFFB347), 'Leaderboard', 'Top gifters and most-loved people', () => go(const LeaderboardScreen())),
+        tile(Icons.sports_esports, const Color(0xFF8A7BFF), 'Games', 'Play lucky games on your own, any time', () => go(GamesTab(openRooms: () => Navigator.pop(context)))),
       ]),
-    );
+      if (agent)
+        group(me['role'] == 'admin' ? 'Admin tools' : 'Agent tools', [
+          tile(Icons.storefront, C.emerald, me['role'] == 'admin' ? 'Admin store' : 'My agent store',
+              me['role'] == 'admin' ? 'Send any amount of coins or diamonds to anyone' : 'Send coins and diamonds from your store to users', () => go(const SendScreen(fromStore: true))),
+        ]),
+      group('Account', [
+        tile(Icons.edit, const Color(0xFF7FB0FF), 'Edit profile', 'Name, photo, cover and bio', () => go(const EditProfileScreen())),
+        tile(Icons.auto_awesome, const Color(0xFFE0485A), 'AI avatar', 'Turn a photo into a fancy cartoon you', () => go(const AvatarStudio())),
+        if (me['verified'] != true) tile(Icons.verified_user, C.emerald, 'Verify my identity', 'Needed before you can withdraw diamonds', () => go(const VerifyScreen())),
+        tile(Icons.receipt_long, C.mute, 'Top-up history', 'Your coin and diamond purchases', () => go(const TopupHistoryScreen())),
+        tile(Icons.settings, C.mute, 'Settings & privacy', 'Last seen, background voice, help, sign out', () => go(const SettingsScreen())),
+      ]),
+    ]);
   }
 }
 
@@ -503,14 +574,57 @@ class _VerifyScreenState extends State<VerifyScreen> {
       );
 }
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  bool? _showLastSeen;
+  bool _bgAlways = BackgroundAudio.alwaysAllowed;
+
+  @override
+  void initState() {
+    super.initState();
+    db.from('profile_private').select('hide_last_seen').eq('user_id', myId!).maybeSingle().then((r) {
+      if (mounted) setState(() => _showLastSeen = r?['hide_last_seen'] != true);
+    }).catchError((_) {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final support = '${App.i.settings['support_contact'] ?? 'support@adda.app'}';
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(children: [
+        const Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 4), child: Text('PRIVACY', style: TextStyle(color: C.mute, fontSize: 12, letterSpacing: 1.5))),
+        SwitchListTile(
+          secondary: const Icon(Icons.visibility, color: C.gold),
+          title: const Text('Show my last seen'),
+          subtitle: const Text('Off: people see "Online" while you are here and just "Offline" otherwise, never the time.', style: TextStyle(color: C.mute, fontSize: 12)),
+          value: _showLastSeen ?? true,
+          activeColor: C.gold,
+          onChanged: _showLastSeen == null
+              ? null
+              : (v) async {
+                  setState(() => _showLastSeen = v);
+                  await attempt(context, () => App.i.rpc('set_presence_privacy', {'p_hide': !v}));
+                },
+        ),
+        const Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 4), child: Text('VOICE ROOMS', style: TextStyle(color: C.mute, fontSize: 12, letterSpacing: 1.5))),
+        SwitchListTile(
+          secondary: const Icon(Icons.headset_mic, color: C.gold),
+          title: const Text('Keep rooms on in the background'),
+          subtitle: const Text('On: never ask, stay in the room when you switch apps (with Mute and Leave buttons in the notification). Off: ask once each time you open Adda.', style: TextStyle(color: C.mute, fontSize: 12)),
+          value: _bgAlways,
+          activeColor: C.gold,
+          onChanged: (v) async {
+            await BackgroundAudio.setAlways(v);
+            setState(() => _bgAlways = v);
+          },
+        ),
+        const Divider(),
         ListTile(
           leading: const Icon(Icons.support_agent, color: C.gold),
           title: const Text('Help & support'),

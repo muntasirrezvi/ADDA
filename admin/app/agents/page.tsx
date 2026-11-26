@@ -14,6 +14,17 @@ export default function Agents() {
   const owner = me?.role === "admin";
   const run = useRun();
   const [amt, setAmt] = useState<Record<string, string>>({});
+  const [damt, setDamt] = useState<Record<string, string>>({});
+  const [newId, setNewId] = useState("");
+  const stores = useAsync(() => rpc<{ agent_id: string; diamonds: number }[]>("agent_stores"));
+  const dia = (id: string) => stores.data?.find((x) => x.agent_id === id)?.diamonds ?? 0;
+  const addAgent = async () => {
+    const u = await rpc<{ id: string; username: string } | null>("find_user", { p_public: Number(newId) });
+    if (!u) throw new Error("No user with that ID");
+    if (!confirm(`Make ${u.username} a coin agent?`)) return;
+    await rpc("admin_set_role", { p_user: u.id, p_role: "agent" });
+    setNewId(""); agents.reload(); stores.reload();
+  };
   const [edit, setEdit] = useState<Acc | null>(null);
   const agents = useAsync(() => rpc<Agent[]>("agent_overview"));
   const accs = useAsync(async () => {
@@ -38,6 +49,14 @@ export default function Agents() {
     <Page title={owner ? "Coin agents" : "My agent account"} sub={owner
       ? "Pick which agents receive payments, add their bKash/Nagad/Rocket numbers, and give them coin stock. New orders go to the agent with enough stock and the fewest waiting orders. To make someone an agent, open them in Users and set the role to agent."
       : "Your coin stock and the numbers users pay you on. Ask the owner to change a number."}>
+      {owner && (
+        <div className="card mb row" style={{ gap: 10, flexWrap: "wrap" }}>
+          <b>Add an agent</b>
+          <input type="number" placeholder="User ID (e.g. 10025)" value={newId} onChange={(e) => setNewId(e.target.value)} style={{ flex: 1, minWidth: 160 }} />
+          <button className="gold sm" onClick={() => run(addAgent, "Agent added")}>Make agent</button>
+          <span className="muted sm">Agents get a coin & diamond store. They send to users from the app (Me → Agent tools) and handle top-up orders here.</span>
+        </div>
+      )}
       {agents.loading || agents.err ? <Loading err={agents.err} /> : !agents.data?.length ? <Empty>No agents yet. Set a user's role to agent in Users.</Empty> : (
         <div className="grid g2 mb">{agents.data.map((a) => {
           const mine = accs.data?.filter((x) => x.agent_id === a.agent_id) ?? [];
@@ -50,13 +69,15 @@ export default function Agents() {
               </div>
               <div className="row" style={{ gap: 18 }}>
                 <div><span className="lbl">Coin stock</span><div style={{ fontSize: 22, fontFamily: "Bodoni Moda, serif", color: "var(--gold)" }}>{fmt(a.coins)}</div></div>
+                <div><span className="lbl">Diamond stock</span><div style={{ fontSize: 22, color: "#8ab0ff" }}>{fmt(dia(a.agent_id))}</div></div>
                 <div><span className="lbl">To check</span><div style={{ fontSize: 22 }}>{a.waiting}</div></div>
                 <div><span className="lbl">Sent today</span><div style={{ fontSize: 22 }}>{fmt(a.coins_today)}</div></div>
               </div>
               {owner && (
                 <div className="row">
-                  <input type="number" placeholder="Coins to add to stock" value={amt[a.agent_id] ?? ""} onChange={(e) => setAmt({ ...amt, [a.agent_id]: e.target.value })} style={{ flex: 1 }} />
-                  <button className="sm gold" onClick={() => run(async () => { await rpc("admin_add_agent_stock", { p_agent: a.agent_id, p_coins: Number(amt[a.agent_id]) }); setAmt({ ...amt, [a.agent_id]: "" }); agents.reload(); }, "Stock added")}>Add stock</button>
+                  <input type="number" placeholder="Coins (+ add / - remove)" value={amt[a.agent_id] ?? ""} onChange={(e) => setAmt({ ...amt, [a.agent_id]: e.target.value })} style={{ flex: 1 }} />
+                  <input type="number" placeholder="Diamonds" value={damt[a.agent_id] ?? ""} onChange={(e) => setDamt({ ...damt, [a.agent_id]: e.target.value })} style={{ flex: 1 }} />
+                  <button className="sm gold" onClick={() => run(async () => { await rpc("admin_stock", { p_agent: a.agent_id, p_coins: Number(amt[a.agent_id] || 0), p_diamonds: Number(damt[a.agent_id] || 0), p_note: "console" }); setAmt({ ...amt, [a.agent_id]: "" }); setDamt({ ...damt, [a.agent_id]: "" }); agents.reload(); stores.reload(); }, "Store updated")}>Update store</button>
                   <button className="sm ghost" onClick={() => { const n = prompt("Name shown in the console", a.display_name ?? a.username); if (n !== null) run(async () => { await rpc("admin_set_topup_agent", { p_agent: a.agent_id, p_accepts: a.accepts_topups, p_name: n }); agents.reload(); }); }}>Rename</button>
                 </div>
               )}

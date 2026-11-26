@@ -6,7 +6,7 @@ import { useMe, useRun, useToast } from "@/components/Shell";
 import { Badge, Empty, Loading, Modal, Page, useAsync } from "@/components/ui";
 
 type O = {
-  id: string; user_id: string; pack_id: string; coins: number; amount: number; currency: string; method: string; pay_to: string; agent_id: string | null;
+  id: string; user_id: string; pack_id: string; coins: number; diamonds?: number; kind?: string; amount: number; currency: string; method: string; pay_to: string; agent_id: string | null;
   status: string; sender_number: string | null; trx_id: string | null; proof_path: string | null; note: string | null;
   created_at: string; submitted_at: string | null; handled_at: string | null;
   user: { username: string; public_id: number } | null; agent: { username: string } | null;
@@ -15,6 +15,7 @@ type Agent = { agent_id: string; username: string; display_name: string | null; 
 
 const TABS: [string, string][] = [["submitted", "To check"], ["awaiting_payment", "Waiting for payment"], ["approved", "Approved"], ["rejected", "Rejected"], ["expired", "Expired"]];
 const TONE: Record<string, "gold" | "green" | "red" | "dim" | ""> = { submitted: "gold", approved: "green", rejected: "red", expired: "dim", cancelled: "dim", awaiting_payment: "" };
+const what = (o: { coins: number; diamonds?: number; kind?: string; pack_id?: string }) => (o.kind === "diamonds" ? `${fmt(o.diamonds ?? 0)} diamonds` : `${fmt(o.coins)} coins`) + (o.pack_id === "custom" ? " (custom)" : "");
 const METHOD: Record<string, string> = { bkash: "bKash", nagad: "Nagad", rocket: "Rocket", upay: "Upay", bank: "Bank", usdt: "USDT" };
 
 export default function Topups() {
@@ -102,7 +103,7 @@ export default function Topups() {
             <tr key={o.id}>
               <td className="sm">{when(o.submitted_at ?? o.created_at)}</td>
               <td>{o.user?.username}<small className="muted">{o.user?.public_id}</small></td>
-              <td>{fmt(o.coins)}</td>
+              <td>{what(o)}</td>
               <td><b>{fmt(o.amount)} {o.currency}</b></td>
               <td className="sm">{METHOD[o.method] ?? o.method}<br /><span className="muted">{o.pay_to}</span></td>
               <td className="sm">{o.sender_number ?? "—"}<br /><b style={{ letterSpacing: 1 }}>{o.trx_id ?? ""}</b></td>
@@ -135,7 +136,7 @@ function OrderModal({ o, owner, agents, onClose, onDone, run }:
         <div className="form">
           <dl className="kv">
             <dt>User</dt><dd>{o.user?.username} ({o.user?.public_id})</dd>
-            <dt>Coins to send</dt><dd><b>{fmt(o.coins)}</b></dd>
+            <dt>To send</dt><dd><b>{what(o)}</b></dd>
             <dt>Paid to</dt><dd>{o.pay_to}</dd>
             <dt>Paid from</dt><dd>{o.sender_number ?? "—"}</dd>
             <dt>Transaction ID</dt><dd><b style={{ fontSize: 16, letterSpacing: 1 }}>{o.trx_id ?? "—"}</b></dd>
@@ -145,8 +146,8 @@ function OrderModal({ o, owner, agents, onClose, onDone, run }:
           {open && (
             <div className="card form">
               <p className="sm" style={{ margin: 0 }}>Approve only after you find <b>{fmt(o.amount)} {o.currency}</b> with TrxID <b>{o.trx_id ?? "?"}</b> in the {METHOD[o.method] ?? o.method} statement for {o.pay_to}.</p>
-              <button className="green" onClick={() => { if (confirm(`Send ${fmt(o.coins)} coins to ${o.user?.username}?`)) run(async () => { await rpc("approve_topup", { p_order: o.id }); onDone(); }, "Approved, coins sent"); }}>
-                Payment received, send {fmt(o.coins)} coins
+              <button className="green" onClick={() => { if (confirm(`Send ${what(o)} to ${o.user?.username}?`)) run(async () => { await rpc("approve_topup", { p_order: o.id }); onDone(); }, "Approved and sent"); }}>
+                Payment received, send {what(o)}
               </button>
               <div className="row">
                 <input placeholder="Reason, e.g. TrxID not found" value={reason} onChange={(e) => setReason(e.target.value)} style={{ flex: 1 }} />

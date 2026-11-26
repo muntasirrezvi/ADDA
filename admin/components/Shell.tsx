@@ -27,6 +27,7 @@ const NAV: [string, string, string][] = [
   ["/reports/", "Reports", "M5 21V4h11l-1 4h5l-2 7H5"],
   ["/verifications/", "Verifications", "M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6zM8 12l3 3 5-6"],
   ["/payouts/", "Withdrawals", "M12 3v18M17 7H9.5a3 3 0 0 0 0 6h5a3 3 0 0 1 0 6H6"],
+  ["/transfers/", "Transfers", "M7 7h13l-3-3M17 17H4l3 3"],
   ["/reels/", "Reels", "M4 4h16v16H4zM10 9l5 3-5 3z"],
   ["/music/", "Music", "M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm11-2a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"],
   ["/broadcast/", "Broadcast", "M3 11l15-6v14L3 13zM7 13v5"],

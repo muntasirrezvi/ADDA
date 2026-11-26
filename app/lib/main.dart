@@ -6,7 +6,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screens/auth_screens.dart';
 import 'screens/shell.dart';
+import 'services/active_room.dart';
 import 'services/api.dart';
+import 'services/background.dart';
+import 'services/presence.dart';
 import 'dart:io' show Platform;
 
 import 'screens/wallet_screen.dart' show PlayBilling;
@@ -25,6 +28,7 @@ Future<void> main() async {
   }
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
   await App.i.loadSettings();
+  await BackgroundAudio.init();
   runApp(const AddaApp());
 }
 
@@ -49,7 +53,7 @@ class AuthGate extends StatefulWidget {
   State<AuthGate> createState() => _AuthGateState();
 }
 
-class _AuthGateState extends State<AuthGate> {
+class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   StreamSubscription<AuthState>? _sub;
   bool _loading = true;
   String? _error;
@@ -57,6 +61,7 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _sub = db.auth.onAuthStateChange.listen((s) {
       if (s.event == AuthChangeEvent.signedIn || s.event == AuthChangeEvent.initialSession || s.event == AuthChangeEvent.signedOut) _boot();
     });
@@ -72,9 +77,11 @@ class _AuthGateState extends State<AuthGate> {
       if (db.auth.currentSession != null) {
         await App.i.loadMe();
         CallService.i.start(navKey);
+        Presence.start();
         if (Platform.isAndroid && App.i.flag('pay_play_enabled')) PlayBilling.i.start(); // finish purchases interrupted last time
       } else {
         CallService.i.stop();
+        Presence.stop();
       }
     } catch (e) {
       _error = errText(e);
@@ -83,7 +90,19 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // online status follows the app being open; the room pauses itself if background voice is not allowed
+    if (state == AppLifecycleState.resumed && db.auth.currentSession != null) {
+      Presence.start();
+    } else if (state == AppLifecycleState.paused) {
+      Presence.stop();
+    }
+    ActiveRoom.onLifecycle(state);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sub?.cancel();
     super.dispose();
   }

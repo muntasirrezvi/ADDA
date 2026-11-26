@@ -11,18 +11,20 @@ import '../widgets/common.dart';
 import 'games_kit.dart';
 import 'party_games.dart';
 
-/// Games hub: lucky games (coins vs the house, results decided by the server) and,
-/// inside a room, party games everyone in the room plays together.
-Future<void> openGames(BuildContext context, {int? roomId}) async {
+/// Checks games are on and the person has confirmed they are 18+. Returns the minimum bet, or null.
+Future<int?> gamesGate(BuildContext context) async {
   Map<String, dynamic> st;
   try {
     st = Map<String, dynamic>.from(await App.i.rpc('my_game_status') as Map);
   } catch (e) {
     if (context.mounted) toast(context, errText(e), bad: true);
-    return;
+    return null;
   }
-  if (!context.mounted) return;
-  if (st['enabled'] != true) return toast(context, 'Games are switched off right now');
+  if (!context.mounted) return null;
+  if (st['enabled'] != true) {
+    toast(context, 'Games are switched off right now');
+    return null;
+  }
   if (st['accepted'] != true) {
     final ok = await showDialog<bool>(
       context: context,
@@ -38,16 +40,22 @@ Future<void> openGames(BuildContext context, {int? roomId}) async {
         ],
       ),
     );
-    if (ok != true || !context.mounted) return;
+    if (ok != true || !context.mounted) return null;
     try {
       await App.i.rpc('accept_games');
     } catch (e) {
       if (context.mounted) toast(context, errText(e), bad: true);
-      return;
+      return null;
     }
   }
-  if (!context.mounted) return;
-  final minBet = (st['min_bet'] as num? ?? 10000).toInt();
+  if (!context.mounted) return null;
+  return (st['min_bet'] as num? ?? 10000).toInt();
+}
+
+/// Games sheet inside a room: party games everyone in the room plays together, plus the lucky games.
+Future<void> openGames(BuildContext context, {int? roomId}) async {
+  final minBet = await gamesGate(context);
+  if (minBet == null || !context.mounted) return;
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -79,18 +87,30 @@ Future<void> openGames(BuildContext context, {int? roomId}) async {
         const SizedBox(height: 14),
         const _Section('Lucky games', 'Results are drawn on our server — fair for everyone'),
         _grid([
-          _GameTile('Greedy', 'food_chicken', 'Up to x45', const Color(0xFFB4521A), () => _go(ctx, context, WheelBetGame.greedy(minBet: minBet, roomId: roomId))),
-          _GameTile('Fruit Party', 'fruit_watermelon', 'Up to x45', const Color(0xFF2E8B2E), () => _go(ctx, context, WheelBetGame.fruit(minBet: minBet, roomId: roomId))),
-          _GameTile('Lucky 777', 'sym_seven', 'Jackpot x50', const Color(0xFF9A1830), () => _go(ctx, context, SlotsGame(minBet: minBet, roomId: roomId))),
-          _GameTile('Rocket', 'rocket', 'Cash out to x100', const Color(0xFF3A2A9A), () => _go(ctx, context, CrashGame(minBet: minBet, roomId: roomId))),
-          _GameTile('Lucky Wheel', 'wheel', 'Spin up to x5', const Color(0xFF8A5A0A), () => _go(ctx, context, LuckyWheelGame(minBet: minBet, roomId: roomId))),
-          _GameTile('Gems', 'gem_diamond', '3 of a kind x40', const Color(0xFF1A4A8A), () => _go(ctx, context, GemsGame(minBet: minBet, roomId: roomId))),
-          _GameTile('Dice', 'die_6', 'Big · Small · 7', const Color(0xFF0F6A4A), () => _go(ctx, context, DiceGame(minBet: minBet, roomId: roomId))),
+          for (final g in luckyGames) _GameTile(g.title, g.image, g.short, g.color, () => _go(ctx, context, g.build(minBet, roomId))),
         ]),
       ]),
     ),
   );
 }
+
+/// Lucky games, shown in the Games tab and in the room games sheet.
+class LuckyGame {
+  const LuckyGame(this.title, this.image, this.short, this.about, this.color, this.build);
+  final String title, image, short, about;
+  final Color color;
+  final Widget Function(int minBet, int? roomId) build;
+}
+
+final luckyGames = <LuckyGame>[
+  LuckyGame('Greedy', 'food_chicken', 'Up to x45', 'Bet on foods, the light stops on a winner', const Color(0xFFB4521A), (m, r) => WheelBetGame.greedy(minBet: m, roomId: r)),
+  LuckyGame('Fruit Party', 'fruit_watermelon', 'Up to x45', 'Same wheel with juicy fruits', const Color(0xFF2E8B2E), (m, r) => WheelBetGame.fruit(minBet: m, roomId: r)),
+  LuckyGame('Lucky 777', 'sym_seven', 'Jackpot x50', 'Classic slot machine, three reels', const Color(0xFF9A1830), (m, r) => SlotsGame(minBet: m, roomId: r)),
+  LuckyGame('Rocket', 'rocket', 'Cash out to x100', 'Pick a target before the rocket explodes', const Color(0xFF3A2A9A), (m, r) => CrashGame(minBet: m, roomId: r)),
+  LuckyGame('Lucky Wheel', 'wheel', 'Spin up to x5', 'Spin the wheel, win what it lands on', const Color(0xFF8A5A0A), (m, r) => LuckyWheelGame(minBet: m, roomId: r)),
+  LuckyGame('Gems', 'gem_diamond', '3 of a kind x40', 'Pick a gem, three gems drop', const Color(0xFF1A4A8A), (m, r) => GemsGame(minBet: m, roomId: r)),
+  LuckyGame('Dice', 'die_6', 'Big · Small · 7', 'Bet on the total of two dice', const Color(0xFF0F6A4A), (m, r) => DiceGame(minBet: m, roomId: r)),
+];
 
 Widget _grid(List<Widget> tiles) => GridView.count(
       crossAxisCount: 3,

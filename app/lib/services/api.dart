@@ -143,6 +143,7 @@ class App {
       'webp' => 'image/webp',
       'mp4' => 'video/mp4',
       'mov' => 'video/quicktime',
+      'webm' => 'video/webm',
       'm4a' => 'audio/m4a',
       'aac' => 'audio/aac',
       _ => 'image/jpeg',
