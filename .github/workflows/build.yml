@@ -102,15 +102,18 @@ jobs:
         id: patch
         if: steps.mode.outputs.mode == 'patch'
         continue-on-error: true
+        env: { ADDA_ABI: arm64-v8a }
         run: shorebird patch android --release-version=latest $DEFINES
       - name: Shorebird release (full APK)
         id: release
         if: steps.mode.outputs.mode == 'release' || steps.patch.outcome == 'failure'
+        env: { ADDA_ABI: arm64-v8a }
         run: |
           shorebird release android --artifact=apk --target-platform=android-arm64 --build-number=${{ github.run_number }} $DEFINES
           mkdir -p ../dist && cp build/app/outputs/flutter-apk/app-release.apk ../dist/adda.apk
       - name: Old phones APK (32-bit, not patchable)
-        if: steps.mode.outputs.mode != 'patch' || steps.patch.outcome == 'failure'
+        if: (steps.mode.outputs.mode != 'patch' && steps.mode.outputs.mode != 'none') || steps.patch.outcome == 'failure'
+        env: { ADDA_ABI: armeabi-v7a }
         run: |
           flutter build apk --release --target-platform android-arm $DEFINES
           mkdir -p ../dist && cp build/app/outputs/flutter-apk/app-release.apk ../dist/adda-old-phones.apk

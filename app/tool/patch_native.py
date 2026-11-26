@@ -50,6 +50,11 @@ for name in ("android/app/build.gradle.kts", "android/app/build.gradle"):
     t = g.read_text()
     t = re.sub(r'applicationId\s*=?\s*"[^"]+"', f'applicationId = "{APP_ID}"' if name.endswith(".kts") else f'applicationId "{APP_ID}"', t)
     t = re.sub(r'minSdk(Version)?\s*=?\s*(flutter\.minSdkVersion|\d+)', "minSdk = 24" if name.endswith(".kts") else "minSdkVersion 24", t)
+    # ADDA_ABI=arm64-v8a (or armeabi-v7a) keeps only that phone type's native libraries, so the APK stays small
+    if "ADDA_ABI" not in t:
+        line = ('        System.getenv("ADDA_ABI")?.let { abi -> ndk { abiFilters += abi } }\n' if name.endswith(".kts")
+                else '        if (System.getenv("ADDA_ABI")) { ndk { abiFilters System.getenv("ADDA_ABI") } }\n')
+        t = re.sub(r'(defaultConfig\s*\{\n)', lambda m: m.group(1) + line, t, count=1)
     g.write_text(t)
 # ---------- Android: build old plugins (e.g. Agora, compiled against android-31) with a current SDK ----------
 (root / "android/compile_sdk_fix.gradle").write_text(
