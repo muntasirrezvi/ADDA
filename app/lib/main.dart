@@ -50,6 +50,7 @@ Future<void> main() async {
     ErrorReporter.report(e, st, where: 'BackgroundAudio.init');
   }
   runApp(const AddaApp());
+  Future.delayed(const Duration(seconds: 4), ErrorReporter.reportLastExit);
 }
 
 class AddaApp extends StatelessWidget {

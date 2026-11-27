@@ -40,7 +40,48 @@ if 'android:scheme="mailto"' not in s:
         s = s.replace("<queries>", "<queries>\n" + intents, 1)
     else:
         s = s.replace("</manifest>", "    <queries>\n" + intents + "    </queries>\n</manifest>")
+# Real phones crashed on the Vulkan renderer (the emulator, which works, uses OpenGL ES): use OpenGL ES everywhere.
+if "ImpellerBackend" not in s:
+    s = s.replace("</application>", '        <meta-data android:name="io.flutter.embedding.android.ImpellerBackend" android:value="opengles" />\n    </application>', 1)
 man.write_text(s)
+
+# MainActivity: lets the app read why Android closed it last time (crash, out of memory, freeze) and report it.
+for kt in (root / "android/app/src/main/kotlin").rglob("MainActivity.kt"):
+    pkg = re.search(r"^package\s+([\w.]+)", kt.read_text(), re.M).group(1)
+    kt.write_text(f"""package {pkg}
+
+import android.app.ActivityManager
+import android.content.Context
+import android.os.Build
+import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
+
+class MainActivity : FlutterActivity() {{
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {{
+        super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "adda/exit").setMethodCallHandler {{ call, result ->
+            if (call.method != "reasons") {{ result.notImplemented(); return@setMethodCallHandler }}
+            val out = ArrayList<Map<String, Any?>>()
+            try {{
+                if (Build.VERSION.SDK_INT >= 30) {{
+                    val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                    for (e in am.getHistoricalProcessExitReasons(packageName, 0, 5)) {{
+                        var trace: String? = null
+                        try {{
+                            e.traceInputStream?.use {{ s -> trace = String(s.readBytes().take(8000).toByteArray(), Charsets.ISO_8859_1) }}
+                        }} catch (_: Throwable) {{}}
+                        out.add(mapOf("time" to e.timestamp, "reason" to e.reason, "status" to e.status, "importance" to e.importance,
+                            "desc" to e.description, "pss" to e.pss, "rss" to e.rss, "trace" to trace))
+                    }}
+                }}
+            }} catch (_: Throwable) {{}}
+            result.success(mapOf("sdk" to Build.VERSION.SDK_INT, "device" to (Build.MANUFACTURER + " " + Build.MODEL),
+                "abis" to Build.SUPPORTED_ABIS.joinToString(","), "list" to out))
+        }}
+    }}
+}}
+""")
 
 # ---------- Android: app id, minimum Android version ----------
 for name in ("android/app/build.gradle.kts", "android/app/build.gradle"):

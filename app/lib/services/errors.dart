@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
 
@@ -43,5 +45,37 @@ class ErrorReporter {
         'platform': '${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
       }).then((_) {}, onError: (_) {});
     } catch (_) {}
+  }
+
+  static const _exitNames = {2: 'killed by signal', 3: 'out of memory', 4: 'Java crash', 5: 'native crash', 6: 'froze (ANR)', 7: 'failed to start', 9: 'used too many resources', 13: 'other'};
+
+  /// Android 11+: if Android closed the app last time (crash, out of memory, freeze), send the reason and trace.
+  static Future<void> reportLastExit() async {
+    if (!Platform.isAndroid) return;
+    try {
+      final r = await const MethodChannel('adda/exit').invokeMapMethod<String, dynamic>('reasons');
+      if (r == null) return;
+      final prefs = await SharedPreferences.getInstance();
+      final last = prefs.getInt('exit_reported') ?? 0;
+      var newest = last;
+      for (final e in (r['list'] as List? ?? const [])) {
+        final m = Map<String, dynamic>.from(e as Map);
+        final t = (m['time'] as num?)?.toInt() ?? 0;
+        if (t <= last) continue;
+        if (t > newest) newest = t;
+        final reason = (m['reason'] as num?)?.toInt() ?? 0;
+        if (!_exitNames.containsKey(reason)) continue;
+        await db.from('app_errors').insert({
+          'user_id': db.auth.currentUser?.id,
+          'where_': 'android exit: ${_exitNames[reason]}',
+          'message': 'desc=${m['desc']} status=${m['status']} importance=${m['importance']} pss=${m['pss']} rss=${m['rss']} at=${DateTime.fromMillisecondsSinceEpoch(t).toUtc()}',
+          'stack': '${m['trace'] ?? ''}'.substring(0, '${m['trace'] ?? ''}'.length.clamp(0, 6000)),
+          'platform': 'Android sdk ${r['sdk']} · ${r['device']} · ${r['abis']}',
+        });
+      }
+      if (newest > last) await prefs.setInt('exit_reported', newest);
+    } catch (e) {
+      debugPrint('ADDA exit report failed: $e');
+    }
   }
 }
