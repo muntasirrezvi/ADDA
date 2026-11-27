@@ -9,9 +9,9 @@ adb logcat -c
 adb shell monkey -p $pkg -c android.intent.category.LAUNCHER 1 >/dev/null
 sleep 12
 echo "== $tag login screen:"; python3 app/tool/ui.py dump | head -20
-python3 app/tool/ui.py tap "Email"
+python3 app/tool/ui.py field 0
 adb shell input text "$email"; sleep 1
-python3 app/tool/ui.py tap "Password"
+python3 app/tool/ui.py field 1
 adb shell input text "$pass"; sleep 1
 adb shell input keyevent 66    # Enter on the password field signs in
 sleep 2; adb exec-out screencap -p > out/after_enter.png
