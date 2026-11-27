@@ -9,6 +9,7 @@ import 'screens/shell.dart';
 import 'services/active_room.dart';
 import 'services/api.dart';
 import 'services/background.dart';
+import 'services/errors.dart';
 import 'services/presence.dart';
 import 'dart:io' show Platform;
 
@@ -27,8 +28,27 @@ Future<void> main() async {
     return;
   }
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
-  await App.i.loadSettings();
-  await BackgroundAudio.init();
+  ErrorReporter.install();
+  // test builds only: sign in automatically (both values are empty in the real app)
+  const autoEmail = String.fromEnvironment('AUTO_LOGIN_EMAIL');
+  const autoPass = String.fromEnvironment('AUTO_LOGIN_PASSWORD');
+  if (autoEmail.isNotEmpty && db.auth.currentSession == null) {
+    try {
+      await db.auth.signInWithPassword(email: autoEmail, password: autoPass);
+    } catch (e) {
+      debugPrint('ADDA auto login failed: $e');
+    }
+  }
+  try {
+    await App.i.loadSettings();
+  } catch (e, st) {
+    ErrorReporter.report(e, st, where: 'loadSettings');
+  }
+  try {
+    await BackgroundAudio.init();
+  } catch (e, st) {
+    ErrorReporter.report(e, st, where: 'BackgroundAudio.init');
+  }
   runApp(const AddaApp());
 }
 
