@@ -9,14 +9,62 @@ import '../widgets/common.dart';
 import 'casino_kit.dart';
 import 'games_kit.dart';
 
-/// Greedy: one live round for everyone. 25 s to place chips on foods, then the light runs
+/// Greedy / Fruit Party: one live round for everyone. 25 s to place chips, then the light runs
 /// around the wheel and stops on the winner. Played with coins only.
 class GreedyLive extends StatefulWidget {
-  const GreedyLive({super.key, this.minBet = 1000});
+  const GreedyLive({super.key, this.minBet = 1000, this.cfg = greedyCfg});
   final int minBet;
+  final WheelCfg cfg;
   @override
   State<GreedyLive> createState() => _GreedyLiveState();
 }
+
+class WheelCfg {
+  const WheelCfg({required this.game, required this.title, required this.items, required this.left, required this.right, required this.leftLabel, required this.rightLabel, required this.bg, required this.help});
+  final String game;
+  final String title;
+  final List<_Food> items;
+  final _Food left;
+  final _Food right;
+  final String leftLabel;
+  final String rightLabel;
+  final List<Color> bg;
+  final String help;
+  String artFor(String id) => [...items, left, right].firstWhere((f) => f.id == id, orElse: () => items.first).art;
+}
+
+const greedyCfg = WheelCfg(
+  game: 'greedy',
+  title: 'Greedy',
+  items: _foods,
+  left: _groupFruit,
+  right: _groupPizza,
+  leftLabel: 'Fruit',
+  rightLabel: 'Pizza',
+  bg: [Color(0xFF6A3FA0), Color(0xFF3A1D5C), Color(0xFF1C0C2C)],
+  help: 'Fruit pays x1.25 if any of the four x5 foods wins. Pizza pays x4.3 if fish, burger, pizza or chicken wins.',
+);
+
+const fruitCfg = WheelCfg(
+  game: 'fruit',
+  title: 'Fruit Party',
+  items: [
+    _Food('cherry', 'fruit_cherry', 5),
+    _Food('lemon', 'fruit_lemon', 5),
+    _Food('orange', 'fruit_orange', 5),
+    _Food('apple', 'fruit_apple', 5),
+    _Food('grape', 'fruit_grape', 10),
+    _Food('banana', 'fruit_banana', 15),
+    _Food('strawberry', 'fruit_strawberry', 25),
+    _Food('watermelon', 'fruit_watermelon', 45),
+  ],
+  left: _Food('g_small', 'group_fruit', 1.25),
+  right: _Food('g_big', 'fruit_watermelon', 4.3),
+  leftLabel: 'Small',
+  rightLabel: 'Big',
+  bg: [Color(0xFF2FA05A), Color(0xFF13603A), Color(0xFF07301C)],
+  help: 'Small pays x1.25 if cherry, lemon, orange or apple wins. Big pays x4.3 if grape, banana, strawberry or watermelon wins.',
+);
 
 class _Food {
   const _Food(this.id, this.art, this.mult);
@@ -39,7 +87,6 @@ const _foods = [
 const _groupFruit = _Food('g_fruit', 'group_fruit', 1.25);
 const _groupPizza = _Food('g_pizza', 'group_pizza', 4.3);
 
-String _artFor(String id) => [..._foods, _groupFruit, _groupPizza].firstWhere((f) => f.id == id, orElse: () => _foods.first).art;
 
 class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
   Map<String, dynamic>? _s;
@@ -81,7 +128,7 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
     if (_loading) return;
     _loading = true;
     try {
-      final s = Map<String, dynamic>.from(await App.i.rpc('greedy_state') as Map);
+      final s = Map<String, dynamic>.from(await App.i.rpc('wheel_state', {'p_game': widget.cfg.game}) as Map);
       if (!mounted) return;
       _offset = (s['now_ms'] as num).toInt() - DateTime.now().millisecondsSinceEpoch;
       final c = s['coins'] as num?;
@@ -121,7 +168,7 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
   Future<void> _spin() async {
     final s = _s!;
     _spunRound = _round;
-    final target = _foods.indexWhere((f) => f.id == s['result']);
+    final target = widget.cfg.items.indexWhere((f) => f.id == s['result']);
     if (target < 0) return;
     // the light runs 3 laps and slows down onto the winner
     final steps = 8 * 3 + target;
@@ -154,7 +201,7 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
     Sfx.play('pop', volume: .6);
     setState(() => _pending[item] = (_pending[item] ?? 0) + _chip);
     try {
-      final r = Map<String, dynamic>.from(await App.i.rpc('greedy_bet', {'p_item': item, 'p_amount': _chip}) as Map);
+      final r = Map<String, dynamic>.from(await App.i.rpc('wheel_bet', {'p_game': widget.cfg.game, 'p_item': item, 'p_amount': _chip}) as Map);
       App.i.coins.value = (r['coins'] as num).toInt();
       if (!mounted) return;
       setState(() {
@@ -178,7 +225,7 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
       backgroundColor: const Color(0xFF2A1238),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: const Text('Greedy'),
+        title: Text(widget.cfg.title),
         actions: [
           IconButton(icon: const Icon(Icons.help_outline), onPressed: _help),
           Padding(
@@ -188,8 +235,8 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
         ],
       ),
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: RadialGradient(center: Alignment(0, -.45), radius: 1.1, colors: [Color(0xFF6A3FA0), Color(0xFF3A1D5C), Color(0xFF1C0C2C)]),
+        decoration: BoxDecoration(
+          gradient: RadialGradient(center: const Alignment(0, -.45), radius: 1.1, colors: widget.cfg.bg),
         ),
         child: s == null
             ? const Center(child: CircularProgressIndicator(color: C.gold))
@@ -231,7 +278,7 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 10),
                   ChestBar(state: chests, onClaim: (lv) async {
-                    final r = await claimChest(context, 'greedy', lv);
+                    final r = await claimChest(context, widget.cfg.game, lv);
                     if (r != null && mounted) setState(() => _s = {...?_s, 'chests': r});
                   }),
                   const SizedBox(height: 10),
@@ -268,13 +315,13 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
               width: item,
               height: item,
               child: _FoodButton(
-                food: _foods[i],
-                mine: _mine(_foods[i].id),
-                total: (allBets[_foods[i].id] as num? ?? 0).toInt(),
+                food: widget.cfg.items[i],
+                mine: _mine(widget.cfg.items[i].id),
+                total: (allBets[widget.cfg.items[i].id] as num? ?? 0).toInt(),
                 lit: _light == i,
-                winner: _phase == 'show' && _showPopup && s['result'] == _foods[i].id,
+                winner: _phase == 'show' && _showPopup && s['result'] == widget.cfg.items[i].id,
                 dim: _phase == 'show' && _light != i && _light >= 0,
-                onTap: () => _bet(_foods[i].id),
+                onTap: () => _bet(widget.cfg.items[i].id),
               ),
             ),
           // center hub with the countdown
@@ -304,8 +351,8 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
             ),
           ),
           // group bets
-          Positioned(left: 0, bottom: 0, width: w * .25, child: _GroupButton(food: _groupFruit, label: 'Fruit', mine: _mine('g_fruit'), onTap: () => _bet('g_fruit'))),
-          Positioned(right: 0, bottom: 0, width: w * .25, child: _GroupButton(food: _groupPizza, label: 'Pizza', mine: _mine('g_pizza'), onTap: () => _bet('g_pizza'))),
+          Positioned(left: 0, bottom: 0, width: w * .25, child: _GroupButton(food: widget.cfg.left, label: widget.cfg.leftLabel, mine: _mine(widget.cfg.left.id), onTap: () => _bet(widget.cfg.left.id))),
+          Positioned(right: 0, bottom: 0, width: w * .25, child: _GroupButton(food: widget.cfg.right, label: widget.cfg.rightLabel, mine: _mine(widget.cfg.right.id), onTap: () => _bet(widget.cfg.right.id))),
           Positioned(
             left: 0,
             top: 0,
@@ -342,7 +389,7 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
                             height: 44,
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(color: const Color(0x33FFFFFF), borderRadius: BorderRadius.circular(10)),
-                            child: art(_artFor('${h[i]}')),
+                            child: art(widget.cfg.artFor('${h[i]}')),
                           ),
                           if (i == 0)
                             Positioned(
@@ -393,7 +440,7 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: const BoxDecoration(color: Color(0xFFB0161B), borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
                 child: Row(children: [
-                  art(_artFor(result), size: 48),
+                  art(widget.cfg.artFor(result), size: 48),
                   Container(width: 1, height: 40, color: Colors.white38, margin: const EdgeInsets.symmetric(horizontal: 12)),
                   Expanded(child: Text(msg, style: TextStyle(color: win > 0 ? const Color(0xFFFFE07A) : Colors.white, fontSize: 18, fontWeight: FontWeight.w800))),
                 ]),
@@ -428,13 +475,13 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
   void _help() => showDialog<void>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Text('How to play Greedy', style: serif(22)),
-          content: const Text(
+          title: Text('How to play ${widget.cfg.title}', style: serif(22)),
+          content: Text(
             'Everyone plays the same round.\n\n'
-            '1. Pick a chip, then tap foods to bet during Bet Time (25 s). Tap again to add more.\n'
-            '2. Show Time: the light runs around the wheel and stops on one food.\n'
+            '1. Pick a chip, then tap items to bet during Bet Time (25 s). Tap again to add more.\n'
+            '2. Show Time: the light runs around the wheel and stops on one item.\n'
             '3. If you bet on it you win your bet × its number (x5 to x45).\n\n'
-            'Fruit pays x1.25 if any of the four x5 foods wins. Pizza pays x4.3 if fish, burger, pizza or chicken wins.\n\n'
+            '${widget.cfg.help}\n\n'
             'Bet more today to open the five chests. Coins only — no real money.',
           ),
           actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK', style: TextStyle(color: C.gold)))],
