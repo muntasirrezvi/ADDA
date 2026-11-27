@@ -70,6 +70,8 @@ jobs:
         run: |
           gh release download latest -p 'adda.apk' -p 'adda-old-phones.apk' -R ${{ github.repository }}
           ls -la *.apk
+          as=$(ls $ANDROID_HOME/build-tools/*/apksigner | tail -1)
+          echo "== signature of adda.apk"; $as verify --print-certs adda.apk | grep -E "DN|SHA-256" | head -3
           email="ci$(date +%s)r@adda-test.dev"; pass="Ci-$(openssl rand -hex 8)"
           curl -s -X POST "$URL/auth/v1/signup" -H "apikey: $KEY" -H "Content-Type: application/json" \
             -d "{\"email\":\"$email\",\"password\":\"$pass\"}" -o /dev/null -w "signup %{http_code}\n"
