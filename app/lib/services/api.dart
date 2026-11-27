@@ -86,6 +86,18 @@ class App {
     unread.value = r.count;
   }
 
+  int _coinHold = 0;
+  int? _heldCoins;
+
+  /// Games call this when they open (true) and close (false).
+  void holdCoins(bool on) {
+    _coinHold = (_coinHold + (on ? 1 : -1)).clamp(0, 99);
+    if (_coinHold == 0 && _heldCoins != null) {
+      coins.value = _heldCoins!;
+      _heldCoins = null;
+    }
+  }
+
   void _listen(String id) {
     if (_ch != null) db.removeChannel(_ch!);
     _ch = db
@@ -96,7 +108,15 @@ class App {
           table: 'wallets',
           filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: id),
           callback: (p) {
-            coins.value = (p.newRecord['coins'] as num?)?.toInt() ?? coins.value;
+            final c = (p.newRecord['coins'] as num?)?.toInt();
+            // while a game is on screen it shows the win first and then sets the balance itself
+            if (c != null) {
+              if (_coinHold > 0) {
+                _heldCoins = c;
+              } else {
+                coins.value = c;
+              }
+            }
             diamonds.value = (p.newRecord['diamonds'] as num?)?.toInt() ?? diamonds.value;
           },
         )

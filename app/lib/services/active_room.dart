@@ -242,6 +242,8 @@ class ActiveRoom extends ChangeNotifier {
       gift: g,
       from: '${Profiles.get(row['sender_id'] as String?)?['username'] ?? 'Someone'}',
       to: '${Profiles.get(row['receiver_id'] as String?)?['username'] ?? 'someone'}',
+      fromId: row['sender_id'] as String?,
+      toId: row['receiver_id'] as String?,
       qty: (row['qty'] as num).toInt(),
     ));
   }

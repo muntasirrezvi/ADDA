@@ -15,6 +15,7 @@ import 'dart:io' show Platform;
 
 import 'screens/wallet_screen.dart' show PlayBilling;
 import 'services/calls.dart';
+import 'services/tour.dart';
 import 'theme.dart';
 import 'widgets/room_bubble.dart';
 
@@ -63,7 +64,15 @@ class AddaApp extends StatelessWidget {
         navigatorKey: navKey,
         home: const AuthGate(),
         // the minimised-room bubble floats above every screen
-        builder: (context, child) => Stack(fit: StackFit.expand, children: [child ?? const SizedBox(), RoomBubble(navigator: navKey)]),
+        // the minimised-room bubble floats above every screen. Text follows the phone's font size,
+        // but within limits so no screen breaks on very large or very small settings.
+        builder: (context, child) {
+          final mq = MediaQuery.of(context);
+          return MediaQuery(
+            data: mq.copyWith(textScaler: mq.textScaler.clamp(minScaleFactor: .85, maxScaleFactor: 1.2)),
+            child: Stack(fit: StackFit.expand, children: [child ?? const SizedBox(), RoomBubble(navigator: navKey)]),
+          );
+        },
       );
 }
 
@@ -75,6 +84,7 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
+  static bool _toured = false;
   StreamSubscription<AuthState>? _sub;
   bool _loading = true;
   String? _error;
@@ -159,6 +169,13 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
           ]),
         ),
       );
+    }
+    if (tourEnabled && !_toured) {
+      _toured = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final nav = navKey.currentState;
+        if (nav != null) runTour(nav);
+      });
     }
     return const Shell();
   }

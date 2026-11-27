@@ -19,7 +19,7 @@ import 'reels_screen.dart';
 import 'rewards.dart';
 import 'wallet_screen.dart';
 import 'wallet_tools.dart';
-import 'withdraw_screen.dart';
+import 'history_screen.dart';
 
 /// Your own profile tab.
 class MeScreen extends StatelessWidget {
@@ -349,7 +349,7 @@ class _MyMenu extends StatelessWidget {
               quick(Icons.add_card, 'Recharge', C.gold, () => go(const WalletScreen())),
               quick(Icons.send, 'Send', const Color(0xFF3DDC84), () => go(const SendScreen())),
               quick(Icons.swap_vert, 'Exchange', const Color(0xFF7FB0FF), () => go(const ExchangeScreen())),
-              quick(Icons.account_balance, 'Withdraw', const Color(0xFFE0485A), () => go(const EarningsScreen())),
+              quick(Icons.receipt_long, 'History', const Color(0xFFE0485A), () => go(const HistoryScreen())),
             ]),
           ]),
         ),
@@ -367,9 +367,9 @@ class _MyMenu extends StatelessWidget {
       group('Account', [
         tile(Icons.edit, const Color(0xFF7FB0FF), 'Edit profile', 'Name, photo, cover and bio', () => go(const EditProfileScreen())),
         tile(Icons.auto_awesome, const Color(0xFFE0485A), 'AI avatar', 'Turn a photo into a fancy cartoon you', () => go(const AvatarStudio())),
-        if (me['verified'] != true) tile(Icons.verified_user, C.emerald, 'Verify my identity', 'Needed before you can withdraw diamonds', () => go(const VerifyScreen())),
+        if (me['verified'] != true) tile(Icons.verified_user, C.emerald, 'Verify my identity', 'Get the verified badge on your profile', () => go(const VerifyScreen())),
         tile(Icons.bookmark, const Color(0xFFFFB347), 'Saved reels', 'Reels you saved from the ⋯ menu', () => go(const SavedReelsScreen())),
-        tile(Icons.receipt_long, C.mute, 'Top-up history', 'Your coin and diamond purchases', () => go(const TopupHistoryScreen())),
+        tile(Icons.receipt_long, C.mute, 'Coin & diamond history', 'Purchases, gifts, games and transfers', () => go(const HistoryScreen())),
         tile(Icons.settings, C.mute, 'Settings & privacy', 'Last seen, background voice, help, sign out', () => go(const SettingsScreen())),
       ]),
     ]);
@@ -556,7 +556,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Verify identity')),
         body: ListView(padding: const EdgeInsets.all(16), children: [
-          const Text('Hosts must verify before withdrawing earnings. Your photos are private and only seen by the Adda team.', style: TextStyle(color: C.mute)),
+          const Text('Verified people get a badge on their profile. Your photos are private and only seen by the Adda team.', style: TextStyle(color: C.mute)),
           const SizedBox(height: 16),
           Row(children: [
             _box('National ID or passport', _doc, ImageSource.gallery, (x) => _doc = x),

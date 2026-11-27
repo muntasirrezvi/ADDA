@@ -51,6 +51,7 @@ class _Lucky777State extends State<Lucky777> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    App.i.holdCoins(true);
     _betIx = _bets.indexWhere((b) => b >= widget.minBet).clamp(0, _bets.length - 1);
     _loadInfo();
     _infoTimer = Timer.periodic(const Duration(seconds: 15), (_) => _loadInfo());
@@ -58,6 +59,7 @@ class _Lucky777State extends State<Lucky777> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    App.i.holdCoins(false);
     _auto = false;
     _infoTimer?.cancel();
     for (final r in _reels) {
@@ -141,11 +143,11 @@ class _Lucky777State extends State<Lucky777> with TickerProviderStateMixin {
       _chests = Map<String, dynamic>.from(r['chests'] as Map);
       _spinning = false;
     });
-    App.i.coins.value = (r['coins'] as num).toInt();
     if (payout > 0) {
       Sfx.play('win');
-      Future.delayed(const Duration(milliseconds: 250), () => Sfx.play('coin'));
+      Future.delayed(const Duration(milliseconds: 800), () => Sfx.play('coin'));
     }
+    coinsAfterReveal((r['coins'] as num).toInt(), delayMs: r['big'] == true ? 1800 : (payout > 0 ? 800 : 0));
     if (r['big'] == true) {
       _big.forward(from: 0);
       _loadInfo();
@@ -215,7 +217,15 @@ class _Lucky777State extends State<Lucky777> with TickerProviderStateMixin {
           child: Row(children: [
             art('coin', size: 26),
             const SizedBox(width: 8),
-            ValueListenableBuilder<int>(valueListenable: App.i.coins, builder: (_, c, __) => Text(grouped(c), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18))),
+            ValueListenableBuilder<int>(
+              valueListenable: App.i.coins,
+              builder: (_, c, __) => TweenAnimationBuilder<double>(
+                tween: Tween(end: c.toDouble()),
+                duration: const Duration(milliseconds: 900),
+                curve: Curves.easeOutCubic,
+                builder: (_, v, __) => Text(grouped(v.round()), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
+              ),
+            ),
           ]),
         ),
         const Spacer(),

@@ -36,6 +36,7 @@ class _MinesGameState extends State<MinesGame> {
   @override
   void initState() {
     super.initState();
+    App.i.holdCoins(true);
     _bet = math.max(widget.minBet, 10000);
     _load();
   }
@@ -127,6 +128,12 @@ class _MinesGameState extends State<MinesGame> {
   }
 
   @override
+  void dispose() {
+    App.i.holdCoins(false);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final g = _g;
     final mult = (g?['mult'] as num? ?? 1).toDouble();
@@ -141,7 +148,7 @@ class _MinesGameState extends State<MinesGame> {
           IconButton(icon: const Icon(Icons.help_outline), onPressed: _help),
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: Center(child: ValueListenableBuilder<int>(valueListenable: App.i.coins, builder: (_, c, __) => CoinText(grouped(c)))),
+            child: const Center(child: LiveCoins()),
           ),
         ],
       ),

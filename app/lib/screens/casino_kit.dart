@@ -215,3 +215,24 @@ Future<Map<String, dynamic>?> claimChest(BuildContext context, String game, int 
     return null;
   }
 }
+
+/// Coin balance that counts up or down to the new value, so a win is seen being added.
+class LiveCoins extends StatelessWidget {
+  const LiveCoins({super.key, this.size = 16});
+  final double size;
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<int>(
+        valueListenable: App.i.coins,
+        builder: (_, c, __) => TweenAnimationBuilder<double>(
+          tween: Tween(end: c.toDouble()),
+          duration: const Duration(milliseconds: 900),
+          curve: Curves.easeOutCubic,
+          builder: (_, v, __) => CoinText(grouped(v.round()), size: size),
+        ),
+      );
+}
+
+/// Adds the server's new balance after the win has been shown on screen.
+void coinsAfterReveal(int coins, {int delayMs = 700}) {
+  Future.delayed(Duration(milliseconds: delayMs), () => App.i.coins.value = coins);
+}

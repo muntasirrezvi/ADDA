@@ -13,6 +13,7 @@ import '../services/presence.dart';
 import '../services/rtc.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/entry_fx.dart';
 import '../widgets/gift_fx.dart';
 import 'create_room.dart';
 import 'games.dart';
@@ -66,6 +67,17 @@ class _RoomScreenState extends State<RoomScreen> {
   StreamSubscription<Map<String, dynamic>>? _joinSub;
   final List<Map<String, dynamic>> _entries = [];
   int _lastLen = 0;
+  Map<String, dynamic>? _roles;
+  final Map<int, GlobalKey> _seatKeys = {};
+
+  /// Screen position of the seat someone is sitting on (for gifts flying to them).
+  Offset? _seatCenter(String uid) {
+    final s = _seats.where((x) => x['user_id'] == uid).firstOrNull;
+    if (s == null) return null;
+    final box = _seatKeys[(s['seat'] as num).toInt()]?.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached) return null;
+    return box.localToGlobal(box.size.center(Offset.zero));
+  }
 
   int get _id => widget.roomId;
   Map<String, dynamic>? get _room => _r?.room;
@@ -110,6 +122,8 @@ class _RoomScreenState extends State<RoomScreen> {
     r.addListener(_changed);
     r.closedReason.addListener(_closed);
     _joinSub = r.joins.stream.listen(_showEntry);
+    r.stage.seatPos = _seatCenter;
+    _loadRoles();
     setState(() {});
     _toBottom();
     if (r.voiceError != null) toast(context, 'Voice is unavailable: ${r.voiceError}', bad: true);
@@ -131,13 +145,22 @@ class _RoomScreenState extends State<RoomScreen> {
     Navigator.of(context).maybePop();
   }
 
+  // entrances play one after another
   void _showEntry(Map<String, dynamic> row) {
-    if (!mounted) return;
-    setState(() => _entries.add(row));
-    Future.delayed(const Duration(milliseconds: 3600), () {
-      if (mounted) setState(() => _entries.remove(row));
+    if (!mounted || _entries.length > 8) return;
+    Profiles.load([row['user_id'] as String?]).then((_) {
+      if (mounted) setState(() => _entries.add(row));
     });
   }
+
+  Future<void> _loadRoles() async {
+    try {
+      final r = Map<String, dynamic>.from(await App.i.rpc('room_roles', {'p_room': _id}) as Map);
+      if (mounted) setState(() => _roles = r);
+    } catch (_) {}
+  }
+
+  bool _isRoomAdmin(String uid) => ((_roles?['admins'] as List?) ?? const []).any((a) => (a as Map)['id'] == uid);
 
   void _toBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -281,26 +304,114 @@ class _RoomScreenState extends State<RoomScreen> {
                 _openGifts(preselect: uid);
               })),
             ]),
-            if (_isAdmin) ...[
-              const SizedBox(height: 8),
-              Wrap(spacing: 8, children: [
-                if (seat != null && seat != 0 && seatRow?['muted'] != true) ActionChip(label: const Text('Mute'), onPressed: () { Navigator.pop(ctx); _seatAction(sn, 'mute'); }),
-                if (seat != null && seat != 0 && seatRow?['muted'] == true) ActionChip(label: const Text('Unmute'), onPressed: () { Navigator.pop(ctx); _seatAction(sn, 'unmute'); }),
-                if (seat != null && seat != 0) ActionChip(label: const Text('Remove from mic'), onPressed: () { Navigator.pop(ctx); _seatAction(sn, 'remove'); }),
-                if (_isOwner) ActionChip(label: const Text('Make room admin'), onPressed: () { Navigator.pop(ctx); attempt(context, () => App.i.rpc('set_room_admin', {'p_room': _id, 'p_user': uid, 'p_admin': true}), ok: 'Now a room admin'); }),
-                ActionChip(
-                  label: const Text('Kick out', style: TextStyle(color: C.ruby)),
-                  onPressed: () async {
+            if (_isAdmin && uid != _room?['owner_id']) ...[
+              const SizedBox(height: 12),
+              const Align(alignment: Alignment.centerLeft, child: Text('Room admin tools', style: TextStyle(color: C.mute, fontSize: 12, fontWeight: FontWeight.w700))),
+              const SizedBox(height: 6),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                if (seat != null && seat != 0 && seatRow?['muted'] != true)
+                  _tool(Icons.mic_off, 'Mute', () { Navigator.pop(ctx); _seatAction(sn, 'mute'); }),
+                if (seat != null && seat != 0 && seatRow?['muted'] == true)
+                  _tool(Icons.mic, 'Unmute', () { Navigator.pop(ctx); _seatAction(sn, 'unmute'); }),
+                if (seat != null && seat != 0)
+                  _tool(Icons.event_seat, 'Take off mic', () { Navigator.pop(ctx); _seatAction(sn, 'remove'); }),
+                if (_isOwner && !_isRoomAdmin(uid))
+                  _tool(Icons.shield, 'Make room admin', () async {
                     Navigator.pop(ctx);
-                    if (await confirm(context, 'Kick ${p?['username']}?', 'They will not be able to come back to this room.', yes: 'Kick', danger: true)) {
-                      if (mounted) attempt(context, () => App.i.rpc('kick_from_room', {'p_room': _id, 'p_user': uid}), ok: 'Removed from the room');
-                    }
-                  },
-                ),
+                    if (await attempt(context, () => App.i.rpc('set_room_admin', {'p_room': _id, 'p_user': uid, 'p_admin': true}), ok: '${p?['username'] ?? 'They'} is now a room admin')) _loadRoles();
+                  }),
+                if (_isOwner && _isRoomAdmin(uid))
+                  _tool(Icons.remove_moderator, 'Remove admin', () async {
+                    Navigator.pop(ctx);
+                    if (await attempt(context, () => App.i.rpc('set_room_admin', {'p_room': _id, 'p_user': uid, 'p_admin': false}), ok: 'No longer a room admin')) _loadRoles();
+                  }),
+                _tool(Icons.block, 'Block from room', () async {
+                  Navigator.pop(ctx);
+                  if (await confirm(context, 'Block ${p?['username']}?', 'They are removed and cannot come back until unblocked.', yes: 'Block', danger: true)) {
+                    if (mounted && await attempt(context, () => App.i.rpc('kick_from_room', {'p_room': _id, 'p_user': uid}), ok: 'Blocked from the room')) _loadRoles();
+                  }
+                }, danger: true),
               ]),
             ],
           ]),
         ),
+      ),
+    );
+  }
+
+  Widget _tool(IconData icon, String label, VoidCallback onTap, {bool danger = false}) => Material(
+        color: danger ? C.ruby.withValues(alpha: .15) : Colors.white10,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(icon, size: 16, color: danger ? C.ruby : C.gold),
+              const SizedBox(width: 6),
+              Text(label, style: TextStyle(color: danger ? C.ruby : C.text, fontWeight: FontWeight.w700, fontSize: 13)),
+            ]),
+          ),
+        ),
+      );
+
+  /// Room admins and blocked people, for the owner and room admins.
+  Future<void> _adminsPanel() async {
+    await _loadRoles();
+    if (!mounted) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) {
+          final admins = ((_roles?['admins'] as List?) ?? const []).cast<Map>();
+          final blocked = ((_roles?['blocked'] as List?) ?? const []).cast<Map>();
+          Widget person(Map p, Widget action) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Avatar(profile: Map<String, dynamic>.from(p), size: 38),
+                title: Text('${p['username'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text('ID ${p['public_id'] ?? ''}', style: const TextStyle(color: C.mute, fontSize: 12)),
+                trailing: action,
+              );
+          return SafeArea(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * .75),
+              child: ListView(shrinkWrap: true, padding: const EdgeInsets.fromLTRB(16, 4, 16, 16), children: [
+                Text('Room admins', style: serif(20)),
+                const Text('Room admins can mute or unmute people, take them off the mic, lock seats and block people. Only the owner can add or remove admins.',
+                    style: TextStyle(color: C.mute, fontSize: 12)),
+                const SizedBox(height: 6),
+                if (admins.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Text('No room admins yet. Tap someone in the room and choose "Make room admin".', style: TextStyle(color: C.mute))),
+                for (final a in admins)
+                  person(a, _isOwner
+                      ? TextButton(
+                          onPressed: () async {
+                            if (await attempt(context, () => App.i.rpc('set_room_admin', {'p_room': _id, 'p_user': a['id'], 'p_admin': false}), ok: 'Removed as admin')) {
+                              await _loadRoles();
+                              set(() {});
+                            }
+                          },
+                          child: const Text('Remove', style: TextStyle(color: C.ruby)),
+                        )
+                      : const Icon(Icons.shield, color: C.gold)),
+                const SizedBox(height: 14),
+                Text('Blocked', style: serif(20)),
+                if (blocked.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Text('Nobody is blocked.', style: TextStyle(color: C.mute))),
+                for (final b in blocked)
+                  person(b, TextButton(
+                    onPressed: () async {
+                      if (await attempt(context, () => App.i.rpc('room_unblock', {'p_room': _id, 'p_user': b['id']}), ok: 'Unblocked')) {
+                        await _loadRoles();
+                        set(() {});
+                      }
+                    },
+                    child: const Text('Unblock', style: TextStyle(color: C.gold)),
+                  )),
+              ]),
+            ),
+          );
+        },
       ),
     );
   }
@@ -334,6 +445,7 @@ class _RoomScreenState extends State<RoomScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (_) => GiftSheet(roomId: _id, gifts: _gifts, people: people, preselect: preselect ?? people.first),
     );
   }
@@ -362,6 +474,12 @@ class _RoomScreenState extends State<RoomScreen> {
             if (mounted) setState(() {});
           }
         }),
+      if (_isAdmin)
+        ('Mute everyone on the mic', Icons.mic_off, () => attempt(context, () => App.i.rpc('room_mute_all', {'p_room': _id, 'p_muted': true}), ok: 'Everyone is muted')),
+      if (_isAdmin)
+        ('Unmute everyone', Icons.mic, () => attempt(context, () => App.i.rpc('room_mute_all', {'p_room': _id, 'p_muted': false}), ok: 'Everyone can talk again')),
+      if (_isAdmin)
+        ('Room admins & blocked people', Icons.admin_panel_settings, _adminsPanel),
       if (_isAdmin)
         ('Schedule an event', Icons.event, () async {
           final title = await askText(context, 'Event title', hint: 'e.g. Friday night music');
@@ -399,7 +517,8 @@ class _RoomScreenState extends State<RoomScreen> {
     if (r == null) return const Scaffold(body: Center(child: CircularProgressIndicator(color: C.gold)));
     final seatsCount = (r['seats'] as num).toInt();
     final host = _seats.where((s) => s['seat'] == 0).firstOrNull;
-    final others = _seats.where((s) => (s['seat'] as num) > 0 && (s['seat'] as num) <= seatsCount).toList();
+    final others = _seats.where((s) => (s['seat'] as num) > 0 && (s['seat'] as num) <= seatsCount).toList()
+      ..sort((a, b) => (a['seat'] as num).compareTo(b['seat'] as num));
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
@@ -424,20 +543,30 @@ class _RoomScreenState extends State<RoomScreen> {
             if (host != null) _seatView(host, big: true),
             const SizedBox(height: 6),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 4,
-                childAspectRatio: seatsCount > 8 ? .95 : .82,
-                children: [for (final s in others) _seatView(s)],
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: LayoutBuilder(builder: (context, box) {
+                // seats numbered No.1, No.2 … row by row from the top; size follows the screen width
+                final cell = box.maxWidth / 4;
+                final avatar = (cell - 26).clamp(36.0, 58.0);
+                return Wrap(children: [
+                  for (final s in others) SizedBox(width: cell, child: Padding(padding: const EdgeInsets.only(bottom: 6), child: _seatView(s, avatar: avatar))),
+                ]);
+              }),
             ),
             Expanded(child: _chat()),
             _bottomBar(),
           ]),
         ),
-        Positioned(left: 0, right: 0, top: MediaQuery.of(context).padding.top + 120, child: _EntryBanners(rows: _entries)),
+        if (_entries.isNotEmpty)
+          Positioned(
+            left: 0,
+            right: 0,
+            top: MediaQuery.of(context).padding.top + 54,
+            bottom: 0,
+            child: EntryShow(key: ValueKey(_entries.first['id'] ?? _entries.first.hashCode), row: _entries.first, onDone: () {
+              if (mounted) setState(() => _entries.removeAt(0));
+            }),
+          ),
         if (_r != null) Positioned.fill(child: PartyLayer(key: ValueKey('party${_r!.id}'), room: _r!)),
         if (_r != null) Positioned.fill(child: GiftStage(controller: _r!.stage)),
       ]),
@@ -477,15 +606,16 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
-  Widget _seatView(Map<String, dynamic> s, {bool big = false}) {
+  Widget _seatView(Map<String, dynamic> s, {bool big = false, double? avatar}) {
     final uid = s['user_id'] as String?;
     final p = Profiles.get(uid);
     final seat = (s['seat'] as num).toInt();
-    final size = big ? 74.0 : 54.0;
+    final size = avatar ?? (big ? 74.0 : 54.0);
     return GestureDetector(
       onTap: () => _tapSeat(s),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         ValueListenableBuilder<Set<int>>(
+          key: _seatKeys.putIfAbsent(seat, () => GlobalKey()),
           valueListenable: _rtc?.talking ?? _noTalk,
           builder: (_, talking, __) {
             final pid = (p?['public_id'] as num?)?.toInt();
@@ -509,9 +639,9 @@ class _RoomScreenState extends State<RoomScreen> {
         ),
         const SizedBox(height: 4),
         SizedBox(
-          width: size + 18,
+          width: size + 22,
           child: Text(
-            uid == null ? (seat == 0 ? 'Host' : '$seat') : '${p?['username'] ?? ''}',
+            uid == null ? (seat == 0 ? 'Host' : 'No.$seat') : '${p?['username'] ?? ''}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
@@ -642,6 +772,9 @@ class _GiftSheetState extends State<GiftSheet> {
   int _qty = 1;
   bool _busy = false;
 
+  static const tiers = [('classic', 'Gifts'), ('luxury', 'Luxury'), ('exclusive', 'Exclusive'), ('event', 'Event')];
+  static const _panel = Color(0xFF141019);
+
   @override
   void initState() {
     super.initState();
@@ -650,11 +783,11 @@ class _GiftSheetState extends State<GiftSheet> {
     if (_gift != null) _tier = '${_gift!['tier']}';
   }
 
-  static const tiers = [('classic', 'Classic'), ('luxury', 'Luxury'), ('exclusive', 'Exclusive'), ('event', 'Event')];
+  bool get _all => widget.people.every(_to.contains);
 
   Future<void> _send() async {
     final g = _gift;
-    if (g == null) return;
+    if (g == null || _to.isEmpty) return;
     final total = (g['price'] as num).toInt() * _qty * _to.length;
     if (total > App.i.coins.value) {
       toast(context, 'Not enough coins', bad: true);
@@ -663,7 +796,9 @@ class _GiftSheetState extends State<GiftSheet> {
     }
     setState(() => _busy = true);
     try {
-      final r = Map<String, dynamic>.from(await App.i.rpc('send_gift', {'p_room': widget.roomId, 'p_receivers': _to.toList(), 'p_gift': g['id'], 'p_qty': _qty}) as Map);
+      // the server allows up to 17 people per gift
+      final to = _to.take(17).toList();
+      final r = Map<String, dynamic>.from(await App.i.rpc('send_gift', {'p_room': widget.roomId, 'p_receivers': to, 'p_gift': g['id'], 'p_qty': _qty}) as Map);
       App.i.coins.value = (r['coins'] as num).toInt();
       if (r['level_up'] == true && mounted) toast(context, 'Level up! You are now level ${r['level']}');
       if (mounted) Navigator.pop(context);
@@ -677,99 +812,183 @@ class _GiftSheetState extends State<GiftSheet> {
   Widget build(BuildContext context) {
     final list = widget.gifts.where((g) => g['tier'] == _tier).toList();
     final exclusive = _gift?['tier'] == 'exclusive';
-    return SafeArea(
-      child: SizedBox(
-        height: MediaQuery.of(context).size.height * .62,
-        child: Column(children: [
-          SizedBox(
-            height: 64,
-            child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12), children: [
-              for (final id in widget.people)
-                GestureDetector(
-                  onTap: () => setState(() => _to.contains(id) ? (_to.length > 1 ? _to.remove(id) : null) : _to.add(id)),
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 10),
-                    child: Column(children: [
-                      Avatar(profile: Profiles.get(id), size: 40, ring: _to.contains(id) ? C.gold : null),
-                      SizedBox(width: 54, child: Text('${Profiles.get(id)?['username'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10))),
-                    ]),
-                  ),
-                ),
-            ]),
-          ),
-          Row(children: [
-            for (final t in tiers)
-              Expanded(
-                child: TextButton(
-                  onPressed: () => setState(() {
-                    _tier = t.$1;
-                    _gift = widget.gifts.where((g) => g['tier'] == t.$1).firstOrNull ?? _gift;
-                  }),
-                  child: Text(t.$2, style: TextStyle(color: _tier == t.$1 ? C.gold : C.mute, fontWeight: _tier == t.$1 ? FontWeight.w800 : FontWeight.w500)),
-                ),
-              ),
-          ]),
-          Expanded(
-            child: list.isEmpty
-                ? const EmptyState('No gifts here right now', icon: Icons.card_giftcard)
-                : GridView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, childAspectRatio: .78, mainAxisSpacing: 6, crossAxisSpacing: 6),
-                    itemCount: list.length,
-                    itemBuilder: (_, i) {
-                      final g = list[i];
-                      final sel = _gift?['id'] == g['id'];
-                      return GestureDetector(
-                        onTap: () => setState(() {
-                          _gift = g;
-                          if (g['tier'] == 'exclusive') _qty = 1;
-                        }),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          decoration: BoxDecoration(
-                            color: sel ? const Color(0xFF3A2E17) : C.card,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: sel ? C.gold : C.line),
+    final mq = MediaQuery.of(context);
+    return MediaQuery(
+      // the panel keeps its layout even with very large system fonts
+      data: mq.copyWith(textScaler: mq.textScaler.clamp(maxScaleFactor: 1.15)),
+      child: Container(
+        decoration: const BoxDecoration(color: _panel, borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: math.min(mq.size.height * .62, 520),
+            child: Column(children: [
+              // who receives
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+                child: Row(children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 50,
+                      child: ListView(scrollDirection: Axis.horizontal, children: [
+                        for (final id in widget.people)
+                          GestureDetector(
+                            onTap: () => setState(() => _to.contains(id) ? (_to.length > 1 ? _to.remove(id) : null) : _to.add(id)),
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: Stack(clipBehavior: Clip.none, children: [
+                                Opacity(opacity: _to.contains(id) ? 1 : .55, child: Avatar(profile: Profiles.get(id), size: 42, ring: _to.contains(id) ? C.gold : null)),
+                                if (_to.contains(id))
+                                  const Positioned(right: -2, bottom: -2, child: CircleAvatar(radius: 8, backgroundColor: C.gold, child: Icon(Icons.check, size: 11, color: Colors.black))),
+                              ]),
+                            ),
                           ),
-                          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                            AnimatedScale(scale: sel ? 1.15 : 1, duration: const Duration(milliseconds: 180), child: GiftIcon(gift: g, size: 38)),
-                            const SizedBox(height: 6),
-                            Text('${g['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
-                            CoinText(compact(g['price'] as num), size: 10),
+                      ]),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () => setState(() {
+                      if (_all) {
+                        _to
+                          ..clear()
+                          ..add(widget.people.first);
+                      } else {
+                        _to.addAll(widget.people);
+                      }
+                    }),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: _all ? C.gold : Colors.white12),
+                      child: Text('All', style: TextStyle(color: _all ? Colors.black : Colors.white, fontWeight: FontWeight.w900, fontSize: 12)),
+                    ),
+                  ),
+                ]),
+              ),
+              // tabs
+              SizedBox(
+                height: 40,
+                child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 6), children: [
+                  for (final t in tiers)
+                    GestureDetector(
+                      onTap: () => setState(() {
+                        _tier = t.$1;
+                        _gift = widget.gifts.where((g) => g['tier'] == t.$1).firstOrNull ?? _gift;
+                        if (_gift?['tier'] == 'exclusive') _qty = 1;
+                      }),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                          Text(t.$2, style: TextStyle(color: _tier == t.$1 ? Colors.white : Colors.white54, fontWeight: _tier == t.$1 ? FontWeight.w800 : FontWeight.w500, fontSize: 14)),
+                          const SizedBox(height: 3),
+                          AnimatedContainer(duration: const Duration(milliseconds: 200), width: _tier == t.$1 ? 18 : 0, height: 3, decoration: BoxDecoration(color: C.gold, borderRadius: BorderRadius.circular(2))),
+                        ]),
+                      ),
+                    ),
+                ]),
+              ),
+              const Divider(height: 1, color: Colors.white10),
+              // gifts
+              Expanded(
+                child: list.isEmpty
+                    ? const EmptyState('No gifts here right now', icon: Icons.card_giftcard)
+                    : LayoutBuilder(builder: (context, box) {
+                        final cols = (box.maxWidth / 88).floor().clamp(3, 6);
+                        return GridView.builder(
+                          padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: cols, mainAxisExtent: 104, mainAxisSpacing: 6, crossAxisSpacing: 6),
+                          itemCount: list.length,
+                          itemBuilder: (_, i) {
+                            final g = list[i];
+                            final sel = _gift?['id'] == g['id'];
+                            return GestureDetector(
+                              onTap: () => setState(() {
+                                _gift = g;
+                                if (g['tier'] == 'exclusive') _qty = 1;
+                              }),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 160),
+                                padding: const EdgeInsets.fromLTRB(4, 6, 4, 4),
+                                decoration: BoxDecoration(
+                                  color: sel ? const Color(0xFF2A2033) : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: sel ? C.gold : Colors.transparent, width: 1.5),
+                                ),
+                                child: Column(children: [
+                                  Expanded(child: AnimatedScale(scale: sel ? 1.12 : 1, duration: const Duration(milliseconds: 160), child: GiftIcon(gift: g, size: 52))),
+                                  Text('${g['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.white)),
+                                  FittedBox(child: CoinText(compact(g['price'] as num), size: 10)),
+                                ]),
+                              ),
+                            );
+                          },
+                        );
+                      }),
+              ),
+              // balance · quantity · send
+              Container(
+                padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+                decoration: const BoxDecoration(border: Border(top: BorderSide(color: Colors.white10))),
+                child: Row(children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
+                      child: Row(children: [
+                        Flexible(child: ValueListenableBuilder<int>(valueListenable: App.i.coins, builder: (_, c, __) => FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: CoinText(grouped(c))))),
+                        const SizedBox(width: 6),
+                        const Text('Recharge ›', style: TextStyle(color: C.gold, fontWeight: FontWeight.w700, fontSize: 12)),
+                      ]),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // quantity + send joined like one button
+                  Container(
+                    height: 38,
+                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(19), border: Border.all(color: C.gold)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      PopupMenuButton<int>(
+                        enabled: !exclusive,
+                        initialValue: _qty,
+                        onSelected: (q) => setState(() => _qty = q),
+                        color: const Color(0xFF231B2B),
+                        itemBuilder: (_) => [for (final q in const [99, 10, 1]) PopupMenuItem(value: q, child: Text('×$q', style: const TextStyle(fontWeight: FontWeight.w800)))],
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Text('×$_qty', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+                            Icon(Icons.keyboard_arrow_up, size: 18, color: exclusive ? Colors.white24 : Colors.white70),
                           ]),
                         ),
-                      );
-                    },
+                      ),
+                      GestureDetector(
+                        onTap: _busy || _gift == null ? null : _send,
+                        child: Container(
+                          height: 38,
+                          padding: const EdgeInsets.symmetric(horizontal: 18),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(gradient: C.goldGrad, borderRadius: BorderRadius.circular(19)),
+                          child: _busy
+                              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                              : const Text('Send', style: TextStyle(color: Color(0xFF1A1206), fontWeight: FontWeight.w900)),
+                        ),
+                      ),
+                    ]),
                   ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
-            child: Row(children: [
-              ValueListenableBuilder<int>(valueListenable: App.i.coins, builder: (_, c, __) => CoinText(compact(c))),
-              const SizedBox(width: 10),
-              GestureDetector(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletScreen())),
-                child: const Text('Top up', style: TextStyle(color: C.gold, fontWeight: FontWeight.w700)),
+                ]),
               ),
-              const Spacer(),
-              for (final q in const [1, 10, 99])
+              if (_gift != null)
                 Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text('×$q'),
-                    selected: _qty == q,
-                    onSelected: exclusive && q != 1 ? null : (_) => setState(() => _qty = q),
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    'Total ${grouped((_gift!['price'] as num) * _qty * math.min(_to.length, 17))} coins · ${_to.length} ${_to.length == 1 ? 'person' : 'people'}',
+                    style: const TextStyle(color: Colors.white38, fontSize: 11),
                   ),
                 ),
-              GoldButton(
-                label: _gift == null ? 'Pick a gift' : 'Send ${compact((_gift!['price'] as num) * _qty * _to.length)}',
-                expand: false,
-                busy: _busy,
-                onTap: _gift == null ? null : _send,
-              ),
             ]),
           ),
-        ]),
+        ),
       ),
     );
   }
@@ -873,55 +1092,6 @@ class _SpeakingSeatState extends State<SpeakingSeat> with SingleTickerProviderSt
             ),
         ]),
       ),
-    );
-  }
-}
-
-/// Colourful "… joined the room" banners that slide in over the room.
-class _EntryBanners extends StatelessWidget {
-  const _EntryBanners({required this.rows});
-  final List<Map<String, dynamic>> rows;
-  static const _grads = [
-    [Color(0xFF2A9D7F), Color(0xFF14524A)],
-    [Color(0xFF6A3DE8), Color(0xFF2E1A6E)],
-    [Color(0xFFC9506C), Color(0xFF6E1F35)],
-    [Color(0xFFF0D9A6), Color(0xFFB8924F)],
-  ];
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        for (final r in rows.reversed.take(3))
-          TweenAnimationBuilder<double>(
-            key: ValueKey(r['id']),
-            tween: Tween(begin: -1, end: 0),
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeOutBack,
-            builder: (_, v, child) => Transform.translate(offset: Offset(v * 300, 0), child: child),
-            child: Builder(builder: (_) {
-              final p = Profiles.get(r['user_id'] as String?);
-              final lv = (p?['wealth_level'] as num?)?.toInt() ?? 1;
-              final g = _grads[lv >= 50 ? 3 : lv >= 20 ? 2 : lv >= 10 ? 1 : 0];
-              return Container(
-                margin: const EdgeInsets.only(left: 10, bottom: 6),
-                padding: const EdgeInsets.fromLTRB(4, 4, 14, 4),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [g[0], g[1].withValues(alpha: .2)]),
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [BoxShadow(color: g[0].withValues(alpha: .5), blurRadius: 12)],
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Avatar(profile: p, size: 28),
-                  const SizedBox(width: 6),
-                  LevelBadge(lv),
-                  const SizedBox(width: 6),
-                  Text('${p?['username'] ?? 'Someone'}', style: TextStyle(fontWeight: FontWeight.w800, color: lv >= 50 ? const Color(0xFF1A1206) : Colors.white)),
-                  Text('  joined the room ✨', style: TextStyle(color: lv >= 50 ? const Color(0xFF1A1206) : Colors.white)),
-                ]),
-              );
-            }),
-          ),
-      ]),
     );
   }
 }

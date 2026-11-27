@@ -40,6 +40,7 @@ class _CrashLiveState extends State<CrashLive> {
   @override
   void initState() {
     super.initState();
+    App.i.holdCoins(true);
     _amount = math.max(widget.minBet, 10000);
     _load();
     _frame = Timer.periodic(const Duration(milliseconds: 50), (_) => _onFrame());
@@ -48,6 +49,7 @@ class _CrashLiveState extends State<CrashLive> {
 
   @override
   void dispose() {
+    App.i.holdCoins(false);
     _frame?.cancel();
     _poll?.cancel();
     super.dispose();
@@ -138,7 +140,7 @@ class _CrashLiveState extends State<CrashLive> {
           IconButton(icon: const Icon(Icons.help_outline), onPressed: _help),
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: Center(child: ValueListenableBuilder<int>(valueListenable: App.i.coins, builder: (_, c, __) => CoinText(grouped(c)))),
+            child: const Center(child: LiveCoins()),
           ),
         ],
       ),
