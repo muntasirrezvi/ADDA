@@ -93,9 +93,33 @@ for name in ("android/app/build.gradle.kts", "android/app/build.gradle"):
     t = re.sub(r'minSdk(Version)?\s*=?\s*(flutter\.minSdkVersion|\d+)', "minSdk = 24" if name.endswith(".kts") else "minSdkVersion 24", t)
     # ADDA_ABI=arm64-v8a (or armeabi-v7a) keeps only that phone type's native libraries, so the APK stays small
     if "ADDA_ABI" not in t:
-        line = ('        ((project.findProperty("addaAbi") as String?) ?: System.getenv("ADDA_ABI"))?.let { abi -> ndk { abiFilters.clear(); abiFilters += abi } }\n' if name.endswith(".kts")
-                else '        def addaAbi = project.findProperty("addaAbi") ?: System.getenv("ADDA_ABI")\n        if (addaAbi) { ndk { abiFilters addaAbi } }\n')
+        line = ('        ((project.findProperty("addaAbi") as String?) ?: System.getenv("ADDA_ABI"))?.let { abi -> ndk { abiFilters.clear(); abiFilters += abi.split(",") } }\n' if name.endswith(".kts")
+                else '        def addaAbi = project.findProperty("addaAbi") ?: System.getenv("ADDA_ABI")\n        if (addaAbi) { ndk { abiFilters(*addaAbi.split(",")) } }\n')
         t = re.sub(r'(defaultConfig\s*\{\n)', lambda m: m.group(1) + line, t, count=1)
+    # one permanent signing key (ADDA_KEYSTORE / ADDA_KEY_PASS), so every new APK installs over the old one
+    if "ADDA_KEYSTORE" not in t:
+        if name.endswith(".kts"):
+            t += """
+System.getenv("ADDA_KEYSTORE")?.let { ks ->
+    if (file(ks).exists()) {
+        val pass = System.getenv("ADDA_KEY_PASS")
+        val cfg = android.signingConfigs.create("adda") {
+            storeFile = file(ks); storeType = "pkcs12"; storePassword = pass; keyAlias = "adda"; keyPassword = pass
+        }
+        android.buildTypes.getByName("release").signingConfig = cfg
+        android.buildTypes.findByName("profile")?.signingConfig = cfg
+    }
+}
+"""
+        else:
+            t += """
+def addaKs = System.getenv("ADDA_KEYSTORE")
+if (addaKs && file(addaKs).exists()) {
+    def pass = System.getenv("ADDA_KEY_PASS")
+    android.signingConfigs.create("adda") { storeFile file(addaKs); storeType "pkcs12"; storePassword pass; keyAlias "adda"; keyPassword pass }
+    android.buildTypes.release.signingConfig android.signingConfigs.adda
+}
+"""
     g.write_text(t)
 # ---------- Android: build old plugins (e.g. Agora, compiled against android-31) with a current SDK ----------
 (root / "android/compile_sdk_fix.gradle").write_text(

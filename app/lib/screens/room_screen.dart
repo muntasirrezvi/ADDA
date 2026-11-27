@@ -305,19 +305,36 @@ class _RoomScreenState extends State<RoomScreen> {
     );
   }
 
-  void _openGifts({String? preselect}) {
-    final onMic = _seats.where((s) => s['user_id'] != null && s['user_id'] != myId).map((s) => s['user_id'] as String).toList();
-    final owner = _room?['owner_id'] as String?;
-    if (owner != null && owner != myId && !onMic.contains(owner)) onMic.insert(0, owner);
-    if (preselect != null && !onMic.contains(preselect)) onMic.insert(0, preselect);
-    if (onMic.isEmpty) {
-      toast(context, 'Nobody to send a gift to yet');
+  Future<void> _openGifts({String? preselect}) async {
+    // everyone who can receive: people on mic first, then the host, then everyone else listening in the room
+    final people = <String>[];
+    void add(String? id) {
+      if (id != null && id != myId && !people.contains(id)) people.add(id);
+    }
+
+    add(preselect);
+    for (final s in _seats) {
+      add(s['user_id'] as String?);
+    }
+    add(_room?['owner_id'] as String?);
+    try {
+      final r = Map<String, dynamic>.from(await App.i.rpc('room_people', {'p_room': _id}) as Map);
+      for (final e in (r['active'] as List? ?? const [])) {
+        add((e as Map)['id'] as String?);
+      }
+    } catch (_) {}
+    await Profiles.load(people);
+    if (!mounted) return;
+    if (people.isEmpty) {
+      toast(context, 'Nobody else is in the room yet');
       return;
     }
+    if (_gifts.isEmpty) await _r?.reloadGifts();
+    if (!mounted) return;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (_) => GiftSheet(roomId: _id, gifts: _gifts, people: onMic, preselect: preselect ?? onMic.first),
+      builder: (_) => GiftSheet(roomId: _id, gifts: _gifts, people: people, preselect: preselect ?? people.first),
     );
   }
 
@@ -625,6 +642,14 @@ class _GiftSheetState extends State<GiftSheet> {
   int _qty = 1;
   bool _busy = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // a gift is chosen from the start, so Send always works
+    _gift = widget.gifts.where((g) => g['tier'] == _tier).firstOrNull ?? widget.gifts.firstOrNull;
+    if (_gift != null) _tier = '${_gift!['tier']}';
+  }
+
   static const tiers = [('classic', 'Classic'), ('luxury', 'Luxury'), ('exclusive', 'Exclusive'), ('event', 'Event')];
 
   Future<void> _send() async {
@@ -676,7 +701,10 @@ class _GiftSheetState extends State<GiftSheet> {
             for (final t in tiers)
               Expanded(
                 child: TextButton(
-                  onPressed: () => setState(() => _tier = t.$1),
+                  onPressed: () => setState(() {
+                    _tier = t.$1;
+                    _gift = widget.gifts.where((g) => g['tier'] == t.$1).firstOrNull ?? _gift;
+                  }),
                   child: Text(t.$2, style: TextStyle(color: _tier == t.$1 ? C.gold : C.mute, fontWeight: _tier == t.$1 ? FontWeight.w800 : FontWeight.w500)),
                 ),
               ),
@@ -733,7 +761,12 @@ class _GiftSheetState extends State<GiftSheet> {
                     onSelected: exclusive && q != 1 ? null : (_) => setState(() => _qty = q),
                   ),
                 ),
-              GoldButton(label: 'Send', expand: false, busy: _busy, onTap: _gift == null ? null : _send),
+              GoldButton(
+                label: _gift == null ? 'Pick a gift' : 'Send ${compact((_gift!['price'] as num) * _qty * _to.length)}',
+                expand: false,
+                busy: _busy,
+                onTap: _gift == null ? null : _send,
+              ),
             ]),
           ),
         ]),

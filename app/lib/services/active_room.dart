@@ -159,6 +159,12 @@ class ActiveRoom extends ChangeNotifier {
     await Profiles.load(msgs.map((m) => m['user_id'] as String?));
   }
 
+  Future<void> reloadGifts() async {
+    try {
+      await _loadGifts();
+    } catch (_) {}
+  }
+
   Future<void> _loadGifts() async {
     final rows = await db.from('gifts').select().eq('active', true).order('sort');
     final now = DateTime.now();

@@ -98,25 +98,35 @@ jobs:
           if [ "${{ github.ref }}" != "refs/heads/main" ]; then mode=build; fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
           echo "### Android: $mode ($reason)" >> "$GITHUB_STEP_SUMMARY"
+      - name: Signing key (same every build, so updates install over the old app)
+        if: steps.mode.outputs.mode != 'none'
+        env:
+          ADDA_SIGN_SEED: ${{ secrets.ADDA_SIGN_SEED }}
+        run: |
+          if [ -z "$ADDA_SIGN_SEED" ]; then
+            echo "::warning::Add the ADDA_SIGN_SEED secret so every APK installs over the previous one."
+            echo "### ⚠ Temporary signing key: add the ADDA_SIGN_SEED secret" >> "$GITHUB_STEP_SUMMARY"; exit 0
+          fi
+          pip install -q cryptography >/dev/null 2>&1 || true
+          pass=$(printf '%s' "adda-pass:$ADDA_SIGN_SEED" | sha256sum | cut -c1-32); echo "::add-mask::$pass"
+          ADDA_KEY_PASS="$pass" python3 tool/make_keystore.py "$RUNNER_TEMP/adda.p12"
+          echo "ADDA_KEYSTORE=$RUNNER_TEMP/adda.p12" >> "$GITHUB_ENV"
+          echo "ADDA_KEY_PASS=$pass" >> "$GITHUB_ENV"
+          echo "### Signed with the permanent Adda key" >> "$GITHUB_STEP_SUMMARY"
       - name: Shorebird patch
         id: patch
         if: steps.mode.outputs.mode == 'patch'
         continue-on-error: true
-        env: { ADDA_ABI: arm64-v8a }
-        run: shorebird patch android --release-version=latest $DEFINES --android-project-arg=addaAbi=arm64-v8a
+        run: shorebird patch android --release-version=latest $DEFINES --android-project-arg=addaAbi=arm64-v8a,armeabi-v7a
       - name: Shorebird release (full APK)
         id: release
         if: steps.mode.outputs.mode == 'release' || steps.patch.outcome == 'failure'
-        env: { ADDA_ABI: arm64-v8a }
         run: |
-          shorebird release android --artifact=apk --target-platform=android-arm64 --build-number=${{ github.run_number }} $DEFINES --android-project-arg=addaAbi=arm64-v8a
+          # one APK for every phone: 64-bit and 32-bit
+          shorebird release android --artifact=apk --target-platform=android-arm,android-arm64 --build-number=${{ github.run_number }} $DEFINES --android-project-arg=addaAbi=arm64-v8a,armeabi-v7a
           mkdir -p ../dist && cp build/app/outputs/flutter-apk/app-release.apk ../dist/adda.apk
-      - name: Old phones APK (32-bit, not patchable)
-        if: (steps.mode.outputs.mode != 'patch' && steps.mode.outputs.mode != 'none') || steps.patch.outcome == 'failure'
-        env: { ADDA_ABI: armeabi-v7a }
-        run: |
-          flutter build apk --release --target-platform android-arm $DEFINES --android-project-arg=addaAbi=armeabi-v7a
-          mkdir -p ../dist && cp build/app/outputs/flutter-apk/app-release.apk ../dist/adda-old-phones.apk
+          cp ../dist/adda.apk ../dist/adda-old-phones.apk   # the old link keeps working
+          ls -la ../dist
       - name: Plain build (branches)
         if: steps.mode.outputs.mode == 'build'
         run: flutter build apk --release --split-per-abi $DEFINES
@@ -131,7 +141,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           cd ../dist
-          notes="Build $(date -u '+%Y-%m-%d %H:%M') UTC from commit ${GITHUB_SHA::7}. Install adda.apk (it updates itself after this); adda-old-phones.apk only if adda.apk does not install."
+          notes="Build $(date -u '+%Y-%m-%d %H:%M') UTC from commit ${GITHUB_SHA::7}. adda.apk works on every Android 7+ phone (64-bit and 32-bit) and updates itself after this."
           if gh release view latest >/dev/null 2>&1; then
             gh release upload latest adda.apk adda-old-phones.apk --clobber
             gh release edit latest --notes "$notes"
