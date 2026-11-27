@@ -67,7 +67,8 @@ jobs:
     defaults: { run: { working-directory: app } }
     env:
       SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
-      DEFINES: --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+      # full icon font in every build, so a new icon never blocks a code-push patch
+      DEFINES: --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }} --no-tree-shake-icons
     steps:
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
