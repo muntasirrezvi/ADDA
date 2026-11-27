@@ -117,16 +117,18 @@ jobs:
         id: patch
         if: steps.mode.outputs.mode == 'patch'
         continue-on-error: true
-        run: shorebird patch android --release-version=latest $DEFINES --android-project-arg=addaAbi=arm64-v8a,armeabi-v7a
+        run: shorebird patch android --release-version=latest $DEFINES --android-project-arg=addaAbi=arm64-v8a+armeabi-v7a
       - name: Shorebird release (full APK)
         id: release
         if: steps.mode.outputs.mode == 'release' || steps.patch.outcome == 'failure'
         run: |
           # one APK for every phone: 64-bit and 32-bit
-          shorebird release android --artifact=apk --target-platform=android-arm,android-arm64 --build-number=${{ github.run_number }} $DEFINES --android-project-arg=addaAbi=arm64-v8a,armeabi-v7a
+          shorebird release android --artifact=apk --target-platform=android-arm,android-arm64 --build-number=${{ github.run_number }} $DEFINES --android-project-arg=addaAbi=arm64-v8a+armeabi-v7a
           mkdir -p ../dist && cp build/app/outputs/flutter-apk/app-release.apk ../dist/adda.apk
           cp ../dist/adda.apk ../dist/adda-old-phones.apk   # the old link keeps working
           ls -la ../dist
+          echo "Phone types inside the APK:"; unzip -l ../dist/adda.apk | grep -oE 'lib/[^/]+/' | sort | uniq -c
+          unzip -l ../dist/adda.apk | grep -q 'lib/armeabi-v7a/libflutter.so' || { echo "::error::APK has no 32-bit Flutter library"; exit 1; }
       - name: Plain build (branches)
         if: steps.mode.outputs.mode == 'build'
         run: flutter build apk --release --split-per-abi $DEFINES

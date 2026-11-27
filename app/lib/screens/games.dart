@@ -9,6 +9,8 @@ import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'games_kit.dart';
+import 'greedy_live.dart';
+import 'lucky777.dart';
 import 'party_games.dart';
 
 /// Checks games are on and the person has confirmed they are 18+. Returns the minimum bet, or null.
@@ -31,8 +33,8 @@ Future<int?> gamesGate(BuildContext context) async {
       builder: (ctx) => AlertDialog(
         title: Text('Games', style: serif(22)),
         content: const Text(
-          'Games use your Adda coins. Coins have no cash value and cannot be withdrawn.\n\n'
-          'You must be 18 or older to play. A daily loss limit protects you.',
+          'Games use your Adda coins only. No real money is used.\n\n'
+          'You must be 18 or older to play.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now', style: TextStyle(color: C.mute))),
@@ -49,7 +51,7 @@ Future<int?> gamesGate(BuildContext context) async {
     }
   }
   if (!context.mounted) return null;
-  return (st['min_bet'] as num? ?? 10000).toInt();
+  return (st['min_bet'] as num? ?? 1000).toInt();
 }
 
 /// Games sheet inside a room: party games everyone in the room plays together, plus the lucky games.
@@ -103,9 +105,9 @@ class LuckyGame {
 }
 
 final luckyGames = <LuckyGame>[
-  LuckyGame('Greedy', 'food_chicken', 'Up to x45', 'Bet on foods, the light stops on a winner', const Color(0xFFB4521A), (m, r) => WheelBetGame.greedy(minBet: m, roomId: r)),
+  LuckyGame('Greedy', 'food_chicken', 'Live · up to x45', 'Live rounds with everyone: bet on foods, the light stops on a winner', const Color(0xFF5A2A8A), (m, r) => GreedyLive(minBet: m)),
   LuckyGame('Fruit Party', 'fruit_watermelon', 'Up to x45', 'Same wheel with juicy fruits', const Color(0xFF2E8B2E), (m, r) => WheelBetGame.fruit(minBet: m, roomId: r)),
-  LuckyGame('Lucky 777', 'sym_seven', 'Jackpot x50', 'Classic slot machine, three reels', const Color(0xFF9A1830), (m, r) => SlotsGame(minBet: m, roomId: r)),
+  LuckyGame('Lucky 777', 'sym_seven', '5 lines · x500', 'Slot machine: 3 reels, 5 lines, auto spin', const Color(0xFF9A1860), (m, r) => Lucky777(minBet: m)),
   LuckyGame('Rocket', 'rocket', 'Cash out to x100', 'Pick a target before the rocket explodes', const Color(0xFF3A2A9A), (m, r) => CrashGame(minBet: m, roomId: r)),
   LuckyGame('Lucky Wheel', 'wheel', 'Spin up to x5', 'Spin the wheel, win what it lands on', const Color(0xFF8A5A0A), (m, r) => LuckyWheelGame(minBet: m, roomId: r)),
   LuckyGame('Gems', 'gem_diamond', '3 of a kind x40', 'Pick a gem, three gems drop', const Color(0xFF1A4A8A), (m, r) => GemsGame(minBet: m, roomId: r)),

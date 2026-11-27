@@ -93,8 +93,8 @@ for name in ("android/app/build.gradle.kts", "android/app/build.gradle"):
     t = re.sub(r'minSdk(Version)?\s*=?\s*(flutter\.minSdkVersion|\d+)', "minSdk = 24" if name.endswith(".kts") else "minSdkVersion 24", t)
     # ADDA_ABI=arm64-v8a (or armeabi-v7a) keeps only that phone type's native libraries, so the APK stays small
     if "ADDA_ABI" not in t:
-        line = ('        ((project.findProperty("addaAbi") as String?) ?: System.getenv("ADDA_ABI"))?.let { abi -> ndk { abiFilters.clear(); abiFilters += abi.split(",") } }\n' if name.endswith(".kts")
-                else '        def addaAbi = project.findProperty("addaAbi") ?: System.getenv("ADDA_ABI")\n        if (addaAbi) { ndk { abiFilters(*addaAbi.split(",")) } }\n')
+        line = ('        ((project.findProperty("addaAbi") as String?) ?: System.getenv("ADDA_ABI"))?.let { abi -> ndk { abiFilters.clear(); abiFilters += abi.split("+", ",") } }\n' if name.endswith(".kts")
+                else '        def addaAbi = project.findProperty("addaAbi") ?: System.getenv("ADDA_ABI")\n        if (addaAbi) { ndk { abiFilters(*addaAbi.split(/[+,]/)) } }\n')
         t = re.sub(r'(defaultConfig\s*\{\n)', lambda m: m.group(1) + line, t, count=1)
     # one permanent signing key (ADDA_KEYSTORE / ADDA_KEY_PASS), so every new APK installs over the old one
     if "ADDA_KEYSTORE" not in t:

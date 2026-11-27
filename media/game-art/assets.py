@@ -1175,6 +1175,170 @@ def lk_board():
         if o.data.polygons[0].normal.z < 0: o.data.flip_normals()
     render('lk_board', view='top', ortho=16.0)
 
+# ---------------------------------------------------------------- greedy v2 foods, chests
+@asset
+def mango():
+    reset(256)
+    m = mat('mango', (1.0, 0.62, 0.05), rough=0.3, coat=0.6, sss=0.12)
+    color_tex(m, (0.95, 0.35, 0.05), (1.0, 0.78, 0.1), scale=1.6, kind='noise', lo=0.35, hi=0.65)
+    b = sphere(1, m=m)
+    for v in b.data.vertices:
+        v.co.x *= 1 + 0.18 * v.co.z           # pear shape
+        v.co.y *= 0.82
+        v.co.x += 0.12 * (v.co.z ** 2)        # curved belly
+    b.rotation_euler = (0, math.radians(-35), 0)
+    lm = mat('ml', (0.12, 0.45, 0.08), rough=0.45)
+    stem([(-0.45, 0, 0.75), (-0.55, 0, 1.0)], 0.05, lm)
+    leaf((-0.3, 0.05, 1.0), (0, math.radians(60), math.radians(20)), 0.5, lm)
+    render('food_mango', yaw=math.radians(-10), elev=math.radians(30))
+
+
+@asset
+def burger():
+    reset(256)
+    bun = mat('bun', (0.85, 0.45, 0.12), rough=0.45, coat=0.3, sss=0.1)
+    top = sphere(1, (0, 0, 0.55), m=bun); top.scale = (1, 1, 0.55)
+    for v in top.data.vertices:
+        if v.co.z < 0: v.co.z = 0
+    seed = mat('seed', (1, 0.95, 0.8), rough=0.5)
+    rnd = random.Random(2)
+    for i in range(22):
+        a, r = rnd.uniform(0, 6.28), rnd.uniform(0.1, 0.8)
+        z = 0.55 + 0.55 * math.sqrt(max(0, 1 - r * r)) - 0.01
+        s = sphere(0.045, (r * math.cos(a), r * math.sin(a), z), seg=10, rings=6, m=seed); s.scale = (1.6, 0.8, 0.6)
+        s.rotation_euler = (0, 0, a)
+    cheese = mat('cheese', (1, 0.72, 0.05), rough=0.35, sss=0.2)
+    c = cube((1.95, 1.95, 0.06), (0, 0, 0.5), m=cheese, bevel=0.02); c.rotation_euler = (0, 0, math.radians(45))
+    for v in c.data.vertices:
+        if abs(v.co.x) > 0.6 and abs(v.co.y) > 0.6: v.co.z -= 0.18
+    lettuce = mat('let', (0.3, 0.7, 0.1), rough=0.5, sss=0.2)
+    l = cyl(1.08, 0.06, (0, 0, 0.42), m=lettuce)
+    for v in l.data.vertices:
+        a = math.atan2(v.co.y, v.co.x); v.co.z += 0.05 * math.sin(9 * a)
+    patty = mat('patty', (0.28, 0.12, 0.05), rough=0.8)
+    bump(patty, 30, 0.8)
+    pt = cyl(1.0, 0.28, (0, 0, 0.22), m=patty); bev(pt, 0.08)
+    tom = mat('tomr', (0.85, 0.1, 0.05), rough=0.2, coat=0.6)
+    cyl(0.95, 0.08, (0, 0, 0.4), m=tom)
+    bot = cyl(1.0, 0.3, (0, 0, -0.06), m=bun); bev(bot, 0.12)
+    render('food_burger', yaw=math.radians(-10), elev=math.radians(28))
+
+
+def _pizza_slice(m_crust, m_cheese, m_pep, rnd, angle=0.0, r=1.6, spread=math.radians(40), z=0.0):
+    me = bpy.data.meshes.new('slice'); bm = bmesh.new()
+    n = 16; verts_top = [bm.verts.new((0, 0, 0.1))]; verts_bot = [bm.verts.new((0, 0, 0))]
+    for i in range(n + 1):
+        a = angle - spread / 2 + spread * i / n
+        verts_top.append(bm.verts.new((r * math.cos(a), r * math.sin(a), 0.1)))
+        verts_bot.append(bm.verts.new((r * math.cos(a), r * math.sin(a), 0)))
+    bm.faces.new(verts_top); bm.faces.new(list(reversed(verts_bot)))
+    for i in range(len(verts_top)):
+        j = (i + 1) % len(verts_top)
+        bm.faces.new((verts_top[i], verts_top[j], verts_bot[j], verts_bot[i]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces); bm.to_mesh(me); bm.free()
+    o = link(bpy.data.objects.new('slice', me)); give(o, m_cheese); o.location.z = z
+    # crust
+    pts = []
+    for i in range(n + 1):
+        a = angle - spread / 2 + spread * i / n
+        pts.append((r * math.cos(a), r * math.sin(a), z + 0.08))
+    stem(pts, 0.13, m_crust)
+    for k in range(3):
+        rr, aa = rnd.uniform(0.45, r - 0.35), angle + rnd.uniform(-spread / 3.2, spread / 3.2)
+        cyl(0.17 * (rr / r + 0.5), 0.05, (rr * math.cos(aa), rr * math.sin(aa), z + 0.12), m=m_pep)
+    return o
+
+
+def _pizza_mats():
+    crust = mat('crust', (0.85, 0.52, 0.18), rough=0.6, sss=0.05)
+    bump(crust, 18, 0.4)
+    cheese = mat('pchz', (1.0, 0.78, 0.25), rough=0.35, sss=0.25, coat=0.2)
+    color_tex(cheese, (0.95, 0.55, 0.12), (1.0, 0.85, 0.35), scale=7, kind='noise', lo=0.45, hi=0.6)
+    pep = mat('pep', (0.7, 0.08, 0.05), rough=0.35, coat=0.4)
+    return crust, cheese, pep
+
+
+@asset
+def pizza_slice():
+    reset(256)
+    crust, cheese, pep = _pizza_mats()
+    _pizza_slice(crust, cheese, pep, random.Random(3), angle=math.radians(90), r=1.9, spread=math.radians(46))
+    render('food_pizza', yaw=math.radians(-10), elev=math.radians(48))
+
+
+@asset
+def pizza_whole():
+    reset(256)
+    crust, cheese, pep = _pizza_mats()
+    rnd = random.Random(5)
+    for k in range(8):
+        _pizza_slice(crust, cheese, pep, rnd, angle=k * math.pi / 4, r=1.6, spread=math.pi / 4 - 0.02)
+    board = mat('board', (0.55, 0.32, 0.14), rough=0.6)
+    color_tex(board, (0.45, 0.25, 0.1), (0.65, 0.4, 0.18), scale=6, kind='wave')
+    cyl(1.85, 0.12, (0, 0, -0.08), m=board)
+    render('group_pizza', yaw=math.radians(-10), elev=math.radians(42))
+
+
+@asset
+def salad_bowl():
+    reset(256)
+    bowl = mat('bowl', (0.96, 0.96, 0.98), rough=0.15, coat=0.8)
+    b = sphere(1.3, m=bowl)
+    for v in b.data.vertices:
+        if v.co.z > 0.15: v.co.z = 0.15
+    b.scale = (1, 1, 0.75)
+    rnd = random.Random(8)
+    fr = [mat('f1', (0.85, 0.06, 0.04), coat=0.6, rough=0.2), mat('f2', (1, 0.6, 0.05), coat=0.5, rough=0.3),
+          mat('f3', (0.3, 0.65, 0.08), rough=0.4, sss=0.2), mat('f4', (1, 0.85, 0.1), coat=0.5, rough=0.3),
+          mat('f5', (0.45, 0.08, 0.35), coat=0.6, rough=0.2)]
+    for i in range(26):
+        a, r = rnd.uniform(0, 6.28), rnd.uniform(0, 1.0)
+        s = sphere(rnd.uniform(0.2, 0.32), (r * math.cos(a), r * math.sin(a), 0.2 + 0.25 * (1 - r) + rnd.uniform(0, 0.15)), seg=20, rings=12, m=fr[i % 5])
+    for i in range(5):
+        leaf((rnd.uniform(-0.6, 0.6), rnd.uniform(-0.6, 0.6), 0.55), (rnd.uniform(-0.5, 0.5), rnd.uniform(-0.5, 0.5), rnd.uniform(0, 6)), 0.5, fr[2])
+    render('group_fruit', yaw=math.radians(-10), elev=math.radians(38))
+
+
+CHESTS = [('chest_1', (0.5, 0.28, 0.12), (0.78, 0.6, 0.3)),   # wood + bronze
+          ('chest_2', (0.25, 0.55, 0.3), (0.85, 0.87, 0.9)),  # green + silver
+          ('chest_3', (0.1, 0.45, 0.75), (1.0, 0.76, 0.3)),   # blue + gold
+          ('chest_4', (0.7, 0.08, 0.1), (1.0, 0.76, 0.3)),    # red + gold
+          ('chest_5', (0.45, 0.12, 0.6), (1.0, 0.76, 0.3))]   # purple + gold
+
+
+def _chest(name, body_c, trim_c, open_=False):
+    reset(256)
+    body = mat('body', body_c, rough=0.35, coat=0.5)
+    trim = mat('trim', trim_c, rough=0.2, metal=1.0)
+    cube((2.2, 1.4, 1.1), (0, 0, 0.55), m=body, bevel=0.08)
+    lid = cyl(0.7, 2.2, (0, 0, 1.1), m=body, rot=(0, math.radians(90), 0))
+    for v in lid.data.vertices:
+        if v.co.x < 0 and False: pass
+    lid.scale = (1, 1, 1)
+    for v in lid.data.vertices:
+        # keep the top half only
+        pass
+    bpy.context.view_layer.update()
+    for x in (-0.95, 0, 0.95):
+        cube((0.16, 1.48, 1.14), (x, 0, 0.55), m=trim, bevel=0.03)
+        torus(0.7, 0.07, (x, 0, 1.1), m=trim, rot=(0, math.radians(90), 0))
+    cube((2.28, 1.48, 0.12), (0, 0, 1.1), m=trim, bevel=0.03)
+    cube((0.42, 0.12, 0.5), (0, -0.74, 0.95), m=trim, bevel=0.05)
+    gem = mat('gemc', (1, 0.2, 0.3) if 'chest_5' not in name else (0.3, 0.9, 1), rough=0.05, trans=0.6, ior=1.8)
+    sphere(0.12, (0, -0.82, 1.0), m=gem).scale = (1, 0.6, 1)
+    # cut the lower half of the lid cylinder away so it sits on the box
+    import bmesh as _bm
+    bm = _bm.new(); bm.from_mesh(lid.data)
+    _bm.ops.delete(bm, geom=[v for v in bm.verts if v.co.x > 0.05], context='VERTS')
+    bm.to_mesh(lid.data); bm.free()
+    render(name, yaw=math.radians(-18), elev=math.radians(22))
+
+
+@asset
+def chests():
+    for name, b, t in CHESTS:
+        _chest(name, b, t)
+
 
 if __name__ == '__main__':
     names = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else list(A)
