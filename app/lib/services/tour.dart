@@ -40,18 +40,6 @@ Future<void> runTour(NavigatorState nav) async {
   await wait(800);
   shot('home');
   await wait(900);
-  await page('me', const Scaffold(body: SafeArea(child: MeScreen())));
-  await page('wallet', const WalletScreen());
-  await page('history', const HistoryScreen());
-  await page('games', GamesTab(openRooms: () {}));
-  await page('greedy', const GreedyLive(), ms: 6000);
-  await page('fruit', const GreedyLive(cfg: fruitCfg), ms: 6000);
-  await page('lucky777', const Lucky777());
-  await page('rocket', const CrashLive(), ms: 6000);
-  await page('gems', const MinesGame());
-  await page('wheel', const BigSixGame());
-  await page('dice', const SicBoGame());
-
   // gift panel
   final gifts = List<Map<String, dynamic>>.from(await db.from('gifts').select().eq('active', true).order('sort'));
   final bgRoute = MaterialPageRoute(builder: (_) => const Scaffold(body: RoomBackground(themeId: 'galaxy')));
@@ -108,5 +96,17 @@ Future<void> runTour(NavigatorState nav) async {
     await wait(2500);
   }
   if (fxRoute.isActive) nav.removeRoute(fxRoute);
+  await page('me', const Scaffold(body: SafeArea(child: MeScreen())));
+  await page('wallet', const WalletScreen());
+  await page('history', const HistoryScreen());
+  await page('games', GamesTab(openRooms: () {}));
+  await page('greedy', const GreedyLive(), ms: 6000);
+  await page('fruit', const GreedyLive(cfg: fruitCfg), ms: 6000);
+  await page('lucky777', const Lucky777());
+  await page('rocket', const CrashLive(), ms: 6000);
+  await page('gems', const MinesGame());
+  await page('wheel', const BigSixGame());
+  await page('dice', const SicBoGame());
+
   debugPrint('ADDA_TOUR done');
 }

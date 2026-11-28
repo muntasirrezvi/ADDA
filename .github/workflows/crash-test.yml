@@ -137,11 +137,12 @@ jobs:
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 33
           arch: x86_64
           target: google_apis
           disable-animations: false
-          ram-size: 4096M
+          ram-size: 3072M
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: bash app/tool/tour_run.sh tour.apk
       - name: Save screenshots to the ci-screens branch
         if: always()
