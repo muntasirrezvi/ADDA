@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme.dart';
@@ -16,7 +17,7 @@ class _RoomTaskHandler extends TaskHandler {
   @override
   void onRepeatEvent(DateTime timestamp) {}
   @override
-  Future<void> onDestroy(DateTime timestamp) async {}
+  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {}
   @override
   void onNotificationButtonPressed(String id) => FlutterForegroundTask.sendDataToMain(id);
 }
@@ -34,6 +35,7 @@ class BackgroundAudio {
   static bool _ready = false;
   static bool _portReady = false;
   static String _room = 'Voice room';
+  static bool _withMic = false;
 
   /// Set by the active room: 'mic' toggles the mic, 'leave' leaves the room.
   static void Function(String action)? onAction;
@@ -141,11 +143,21 @@ class BackgroundAudio {
     try {
       _init();
       final text = micOn ? 'You are live · mic on' : 'You are listening · mic off';
+      final micOk = await Permission.microphone.isGranted;
+      // a listener who goes on the mic needs the service restarted with the microphone type
+      if (micOn && micOk && !_withMic && await FlutterForegroundTask.isRunningService) {
+        await FlutterForegroundTask.stopService();
+      }
       if (await FlutterForegroundTask.isRunningService) {
         await FlutterForegroundTask.updateService(notificationTitle: 'Adda · $_room', notificationText: text, notificationButtons: _buttons(micOn));
       } else {
+        // Android 14+ refuses a microphone service before mic permission is granted (that crashed
+        // the app for listeners), so listeners get a media-playback service instead.
+        final mic = micOk;
+        _withMic = mic;
         await FlutterForegroundTask.startService(
           serviceId: 7101,
+          serviceTypes: [if (mic) ForegroundServiceTypes.microphone, ForegroundServiceTypes.mediaPlayback],
           notificationTitle: 'Adda · $_room',
           notificationText: text,
           notificationButtons: _buttons(micOn),
@@ -162,6 +174,7 @@ class BackgroundAudio {
   static Future<void> stop() async {
     if (!Platform.isAndroid) return;
     try {
+      _withMic = false;
       if (await FlutterForegroundTask.isRunningService) await FlutterForegroundTask.stopService();
     } catch (_) {}
   }

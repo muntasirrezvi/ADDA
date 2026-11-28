@@ -21,6 +21,7 @@ perms = [
     "com.android.vending.BILLING",
     "android.permission.FOREGROUND_SERVICE",
     "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+    "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
     "android.permission.POST_NOTIFICATIONS",
 ]
 add = "".join(f'    <uses-permission android:name="{p}"/>\n' for p in perms if p not in s)
@@ -30,7 +31,7 @@ s = re.sub(r'android:label="[^"]*"', 'android:label="Adda"', s, count=1)
 # keeps voice rooms and calls running when the app is in the background
 if "flutter_foreground_task.service.ForegroundService" not in s:
     s = s.replace("</application>", '        <service android:name="com.pravera.flutter_foreground_task.service.ForegroundService"\n'
-                  '            android:foregroundServiceType="microphone" android:exported="false" android:stopWithTask="true" />\n    </application>', 1)
+                  '            android:foregroundServiceType="microphone|mediaPlayback" android:exported="false" android:stopWithTask="true" />\n    </application>', 1)
 intents = (
     '        <intent><action android:name="android.intent.action.VIEW"/><data android:scheme="https"/></intent>\n'
     '        <intent><action android:name="android.intent.action.SENDTO"/><data android:scheme="mailto"/></intent>\n'
