@@ -23,18 +23,21 @@ Future<void> runTour(NavigatorState nav) async {
   void shot(String name) => debugPrint('ADDA_TOUR shot $name');
   Future<void> wait([int ms = 4500]) => Future.delayed(Duration(milliseconds: ms));
   Future<void> page(String name, Widget w, {int ms = 4500}) async {
-    nav.push(MaterialPageRoute(builder: (_) => w));
+    final route = MaterialPageRoute(builder: (_) => w);
+    nav.push(route);
     await wait(ms);
     shot(name);
     await wait(900);
-    nav.pop();
+    if (route.isActive) nav.removeRoute(route);
     await wait(800);
   }
 
   try {
     await App.i.rpc('accept_games');
   } catch (_) {}
-  await wait(6000);
+  await wait(11000);
+  nav.popUntil((r) => r.isFirst);
+  await wait(800);
   shot('home');
   await wait(900);
   await page('me', const Scaffold(body: SafeArea(child: MeScreen())));
@@ -51,7 +54,8 @@ Future<void> runTour(NavigatorState nav) async {
 
   // gift panel
   final gifts = List<Map<String, dynamic>>.from(await db.from('gifts').select().eq('active', true).order('sort'));
-  nav.push(MaterialPageRoute(builder: (_) => const Scaffold(body: RoomBackground(themeId: 'galaxy'))));
+  final bgRoute = MaterialPageRoute(builder: (_) => const Scaffold(body: RoomBackground(themeId: 'galaxy')));
+  nav.push(bgRoute);
   await wait(1200);
   final sheet = showModalBottomSheet<void>(
     context: nav.context,
@@ -64,11 +68,12 @@ Future<void> runTour(NavigatorState nav) async {
   await wait(700);
   nav.pop();
   await sheet;
+  if (bgRoute.isActive) nav.removeRoute(bgRoute);
   await wait(600);
 
   // entrance and gift animations over a room background
   final stage = GiftStageController();
-  nav.push(MaterialPageRoute(
+  final fxRoute = MaterialPageRoute(
     builder: (_) => Scaffold(
       body: Stack(fit: StackFit.expand, children: [
         const RoomBackground(themeId: 'galaxy'),
@@ -76,7 +81,8 @@ Future<void> runTour(NavigatorState nav) async {
         GiftStage(controller: stage),
       ]),
     ),
-  ));
+  );
+  nav.push(fxRoute);
   await wait(1300);
   shot('entry');
   await wait(3500);
@@ -101,6 +107,6 @@ Future<void> runTour(NavigatorState nav) async {
     shot('gift_palace');
     await wait(2500);
   }
-  nav.pop();
+  if (fxRoute.isActive) nav.removeRoute(fxRoute);
   debugPrint('ADDA_TOUR done');
 }

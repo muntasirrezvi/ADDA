@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/api.dart';
+import '../services/tour.dart' show tourEnabled;
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'games_kit.dart';
@@ -53,7 +54,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     if (!_rewardShown) {
       _rewardShown = true;
       Future.delayed(const Duration(milliseconds: 1200), () {
-        if (mounted) showDailyRewards(context, onlyIfReady: true);
+        if (mounted && !tourEnabled) showDailyRewards(context, onlyIfReady: true);
       });
     }
   }
