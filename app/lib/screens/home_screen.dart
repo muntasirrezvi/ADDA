@@ -218,7 +218,6 @@ class RoomCard extends StatelessWidget {
           color: C.card,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: featured ? C.gold2 : C.line),
-          boxShadow: featured ? [BoxShadow(color: C.gold.withValues(alpha: .18), blurRadius: 14, spreadRadius: -2)] : null,
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
