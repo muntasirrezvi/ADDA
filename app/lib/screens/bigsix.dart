@@ -40,7 +40,7 @@ class _BigSixGameState extends State<BigSixGame> with SingleTickerProviderStateM
   String? _hit;
   int _lastWin = 0;
   double _angle = 0; // wheel rotation in turns
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 5200));
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 5200), animationBehavior: AnimationBehavior.preserve);
   Animation<double>? _spin;
 
   int get _total => _bets.values.fold(0, (a, b) => a + b);

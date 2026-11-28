@@ -16,7 +16,7 @@ class EntryShow extends StatefulWidget {
 }
 
 class _EntryShowState extends State<EntryShow> with SingleTickerProviderStateMixin {
-  late final AnimationController _a = AnimationController(vsync: this, duration: const Duration(milliseconds: 4200));
+  late final AnimationController _a = AnimationController(vsync: this, duration: const Duration(milliseconds: 4200), animationBehavior: AnimationBehavior.preserve);
   static final _sparks = List.generate(26, (i) {
     final r = math.Random(i * 13 + 5);
     return [r.nextDouble(), r.nextDouble(), r.nextDouble(), r.nextDouble()];

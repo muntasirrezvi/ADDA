@@ -27,7 +27,7 @@ Future<void> runTour(NavigatorState nav) async {
     nav.push(route);
     await wait(ms);
     shot(name);
-    await wait(900);
+    await wait(3000);
     if (route.isActive) nav.removeRoute(route);
     await wait(800);
   }
@@ -65,7 +65,7 @@ Future<void> runTour(NavigatorState nav) async {
   );
   await wait(2500);
   shot('gift_panel');
-  await wait(700);
+  await wait(2500);
   nav.pop();
   await sheet;
   if (bgRoute.isActive) nav.removeRoute(bgRoute);
@@ -83,22 +83,22 @@ Future<void> runTour(NavigatorState nav) async {
     ),
   );
   nav.push(fxRoute);
-  await wait(1300);
+  await wait(900);
   shot('entry');
-  await wait(3500);
+  await wait(4500);
   final car = gifts.where((g) => g['id'] == 'car').firstOrNull;
   if (car != null) {
     stage.play(GiftShow(gift: car, from: 'Tester', to: 'Friend', qty: 1));
-    await wait(1600);
+    await wait(1200);
     shot('gift_car');
-    await wait(3200);
+    await wait(4000);
   }
   final rose = gifts.where((g) => g['id'] == 'rose').firstOrNull;
   if (rose != null) {
     stage.play(GiftShow(gift: rose, from: 'Tester', to: 'Friend', qty: 10));
-    await wait(700);
+    await wait(500);
     shot('gift_rose');
-    await wait(2000);
+    await wait(2500);
   }
   final palace = gifts.where((g) => g['id'] == 'palace').firstOrNull;
   if (palace != null) {

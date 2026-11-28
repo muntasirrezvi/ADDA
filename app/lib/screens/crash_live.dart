@@ -208,7 +208,22 @@ class _CrashLiveState extends State<CrashLive> {
           final ang = math.atan2(tip.dy - before.dy, tip.dx - before.dx);
           return Stack(children: [
             Positioned.fill(child: CustomPaint(painter: _SkyPainter(t: t, pt: pt, crashed: phase == 'crashed', show: phase != 'bet'))),
-            if (phase != 'bet' && phase != 'crashed')
+            if (phase == 'bet')
+              Positioned(
+                left: w * .06 - 6,
+                top: h * .9 - 78,
+                width: 70,
+                height: 70,
+                child: Floaty(amp: 2, period: 900, tilt: .01, child: Transform.rotate(angle: -math.pi / 4 + .2, child: art('rocket'))),
+              ),
+            if (phase != 'bet' && phase != 'crashed') ...[
+              Positioned(
+                left: tip.dx - 26 - math.cos(ang) * 30,
+                top: tip.dy - 26 - math.sin(ang) * 30,
+                width: 52,
+                height: 52,
+                child: CustomPaint(painter: _FlamePainter(ang, _now)),
+              ),
               Positioned(
                 left: tip.dx - 32,
                 top: tip.dy - 32,
@@ -216,6 +231,7 @@ class _CrashLiveState extends State<CrashLive> {
                 height: 64,
                 child: Transform.rotate(angle: ang + math.pi / 4 + .2, child: art('rocket')),
               ),
+            ],
             if (phase == 'crashed')
               Positioned(left: tip.dx - 40, top: tip.dy - 40, width: 80, height: 80, child: art('bomb')),
             Center(
@@ -408,4 +424,29 @@ class _SkyPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_SkyPainter o) => true;
+}
+
+class _FlamePainter extends CustomPainter {
+  _FlamePainter(this.ang, this.t);
+  final double ang;
+  final int t;
+  @override
+  void paint(Canvas canvas, Size s) {
+    final c = s.center(Offset.zero);
+    final flick = .8 + .2 * math.sin(t / 40);
+    canvas.save();
+    canvas.translate(c.dx, c.dy);
+    canvas.rotate(ang + math.pi);
+    final len = s.width * .9 * flick;
+    final path = Path()
+      ..moveTo(0, -s.height * .16)
+      ..quadraticBezierTo(len * .6, -s.height * .2, len, 0)
+      ..quadraticBezierTo(len * .6, s.height * .2, 0, s.height * .16)
+      ..close();
+    canvas.drawPath(path, Paint()..shader = const RadialGradient(center: Alignment(-1, 0), radius: 1.2, colors: [Colors.white, Color(0xFFFFE07A), Color(0xFFFF6D00), Color(0x00FF3D00)]).createShader(Rect.fromLTWH(0, -s.height / 2, len, s.height))..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_FlamePainter o) => true;
 }

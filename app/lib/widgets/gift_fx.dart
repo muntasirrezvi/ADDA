@@ -89,7 +89,7 @@ class GiftStageController {
 
 class _GiftStageState extends State<GiftStage> with TickerProviderStateMixin {
   GiftShow? _now;
-  late final AnimationController _a = AnimationController(vsync: this, duration: const Duration(milliseconds: 3200));
+  late final AnimationController _a = AnimationController(vsync: this, duration: const Duration(milliseconds: 3200), animationBehavior: AnimationBehavior.preserve);
   final _rnd = Random();
   List<_P> _ps = [];
   String _theme = 'sparkle';

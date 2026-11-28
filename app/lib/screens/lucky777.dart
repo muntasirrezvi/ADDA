@@ -42,8 +42,8 @@ class _Lucky777State extends State<Lucky777> with TickerProviderStateMixin {
   List<String> _grid = ['bell', 'bell', 'bell', 'seven', 'seven', 'seven', 'grape', 'grape', 'grape'];
   List<Map> _lines = [];
   late List<List<String>> _strips = List.generate(3, (c) => [_grid[c], _grid[3 + c], _grid[6 + c]]);
-  late final List<AnimationController> _reels = List.generate(3, (_) => AnimationController(vsync: this, duration: const Duration(milliseconds: 1200)));
-  late final AnimationController _big = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600));
+  late final List<AnimationController> _reels = List.generate(3, (_) => AnimationController(vsync: this, duration: const Duration(milliseconds: 1200), animationBehavior: AnimationBehavior.preserve));
+  late final AnimationController _big = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600), animationBehavior: AnimationBehavior.preserve);
   Timer? _infoTimer;
 
   int get _bet => _bets[_betIx];

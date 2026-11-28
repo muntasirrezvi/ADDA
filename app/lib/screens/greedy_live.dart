@@ -593,7 +593,7 @@ class _GroupButton extends StatelessWidget {
         onTap: onTap,
         child: Stack(clipBehavior: Clip.none, children: [
           Column(mainAxisSize: MainAxisSize.min, children: [
-            AspectRatio(aspectRatio: 1.3, child: art(food.art)),
+            AspectRatio(aspectRatio: 1.05, child: art(food.art)),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 3),
