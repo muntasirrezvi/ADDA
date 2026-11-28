@@ -35,8 +35,8 @@ class _FxClockHostState extends State<FxClockHost> with SingleTickerProviderStat
   void initState() {
     super.initState();
     _ticker = createTicker((d) {
-      // ~30 fps is plenty for ambient effects and halves the work
-      if (++_frame % 2 == 1) return;
+      // ~20 fps is plenty for ambient effects and keeps the GPU almost idle
+      if (++_frame % 3 != 0) return;
       final dt = (d - _last).inMicroseconds / 1e6;
       _last = d;
       _t.value += dt.clamp(0, .1);
@@ -62,8 +62,30 @@ class AmbientBackdrop extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = FxClock.of(context);
     if (t == null) return const SizedBox.shrink();
-    return IgnorePointer(child: RepaintBoundary(child: CustomPaint(painter: _DustPainter(t), size: Size.infinite)));
+    return IgnorePointer(
+      child: Stack(fit: StackFit.expand, children: [
+        const RepaintBoundary(child: CustomPaint(painter: _GlowsPainter())),
+        RepaintBoundary(child: CustomPaint(painter: _DustPainter(t), size: Size.infinite)),
+      ]),
+    );
   }
+}
+
+class _GlowsPainter extends CustomPainter {
+  const _GlowsPainter();
+  @override
+  void paint(Canvas canvas, Size s) {
+    final p = Paint();
+    for (final g in const [(.15, .12, 0xFF6B2E8F), (.9, .55, 0xFF8F5E1E)]) {
+      final c = Offset(s.width * g.$1, s.height * g.$2);
+      final rad = s.width * .5;
+      p.shader = RadialGradient(colors: [Color(g.$3).withValues(alpha: .13), Colors.transparent]).createShader(Rect.fromCircle(center: c, radius: rad));
+      canvas.drawCircle(c, rad, p);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GlowsPainter old) => false;
 }
 
 class _DustPainter extends CustomPainter {
@@ -78,15 +100,6 @@ class _DustPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size s) {
     final time = t.value;
-    // two big soft glows that breathe slowly
-    for (final g in const [(.15, .12, 0xFF6B2E8F), (.9, .55, 0xFF8F5E1E)]) {
-      final pulse = .5 + .5 * math.sin(time * .5 + g.$1 * 10);
-      final c = Offset(s.width * g.$1, s.height * g.$2);
-      final rad = s.width * (.45 + .05 * pulse);
-      _p.shader = RadialGradient(colors: [Color(g.$3).withValues(alpha: .10 + .05 * pulse), Colors.transparent]).createShader(Rect.fromCircle(center: c, radius: rad));
-      canvas.drawCircle(c, rad, _p);
-    }
-    _p.shader = null;
     for (final d in _seeds) {
       final y = (d[1] - time * d[3]) % 1.0;
       final x = d[0] + .02 * math.sin(time * .6 + d[4]);
@@ -112,16 +125,26 @@ class ShimmerText extends StatelessWidget {
     Widget paint(double time) {
       final p = (time % 4.0) / 4.0; // one sweep every 4 s, visible in the first 40%
       final x = -1.5 + (p / .4).clamp(0.0, 1.0) * 3.5;
-      return ShaderMask(
-        shaderCallback: (r) => LinearGradient(
+      final fs = style.fontSize ?? 20;
+      final rect = Rect.fromLTWH(0, 0, fs * text.length * .62, fs * 1.3);
+      // gradient painted straight into the glyphs: no extra compositing layer
+      final paint = Paint()
+        ..shader = LinearGradient(
           begin: Alignment(x - .6, -.4),
           end: Alignment(x + .6, .4),
           colors: const [Color(0xFFF0D9A6), Color(0xFFB8924F), Color(0xFFFFF6DD), Color(0xFFB8924F), Color(0xFFF0D9A6)],
           stops: const [0, .35, .5, .65, 1],
-          tileMode: TileMode.clamp,
-        ).createShader(r),
-        child: Text(text, style: style.copyWith(color: Colors.white)),
-      );
+        ).createShader(rect);
+      return Text(text,
+          style: TextStyle(
+            fontFamily: style.fontFamily,
+            fontFamilyFallback: style.fontFamilyFallback,
+            fontSize: style.fontSize,
+            fontWeight: style.fontWeight,
+            fontStyle: style.fontStyle,
+            letterSpacing: style.letterSpacing,
+            foreground: paint,
+          ));
     }
 
     if (t == null) return paint(0);
@@ -138,11 +161,12 @@ class FxFloat extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = FxClock.of(context);
     if (t == null) return child;
-    return ValueListenableBuilder<double>(
+    return RepaintBoundary(
+        child: ValueListenableBuilder<double>(
       valueListenable: t,
-      child: child,
+      child: RepaintBoundary(child: child),
       builder: (_, v, c) => Transform.translate(offset: Offset(0, amp * math.sin(v * speed + phase)), child: c),
-    );
+    ));
   }
 }
 
@@ -155,7 +179,7 @@ class LiveBars extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = FxClock.of(context);
-    return SizedBox(width: size, height: size, child: t == null ? Icon(Icons.graphic_eq, size: size, color: color) : CustomPaint(painter: _BarsPainter(t, color, seed)));
+    return SizedBox(width: size, height: size, child: t == null ? Icon(Icons.graphic_eq, size: size, color: color) : RepaintBoundary(child: CustomPaint(painter: _BarsPainter(t, color, seed))));
   }
 }
 
@@ -186,7 +210,7 @@ class GlowBorder extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = FxClock.of(context);
     if (t == null) return const SizedBox.shrink();
-    return IgnorePointer(child: CustomPaint(painter: _GlowPainter(t, radius), size: Size.infinite));
+    return IgnorePointer(child: RepaintBoundary(child: CustomPaint(painter: _GlowPainter(t, radius), size: Size.infinite)));
   }
 }
 
@@ -219,7 +243,7 @@ class LightSweep extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = FxClock.of(context);
     if (t == null) return const SizedBox.shrink();
-    return IgnorePointer(child: CustomPaint(painter: _SweepPainter(t, period, offset), size: Size.infinite));
+    return IgnorePointer(child: RepaintBoundary(child: CustomPaint(painter: _SweepPainter(t, period, offset), size: Size.infinite)));
   }
 }
 
