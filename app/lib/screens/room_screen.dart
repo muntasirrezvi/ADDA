@@ -65,6 +65,9 @@ class _RoomScreenState extends State<RoomScreen> {
   final _scroll = ScrollController();
   final _input = TextEditingController();
   StreamSubscription<Map<String, dynamic>>? _joinSub;
+  StreamSubscription<Map<String, dynamic>>? _inviteSub;
+  StreamSubscription<String>? _noticeSub;
+  bool _inviteOpen = false;
   final List<Map<String, dynamic>> _entries = [];
   int _lastLen = 0;
   Map<String, dynamic>? _roles;
@@ -122,6 +125,11 @@ class _RoomScreenState extends State<RoomScreen> {
     r.addListener(_changed);
     r.closedReason.addListener(_closed);
     _joinSub = r.joins.stream.listen(_showEntry);
+    _inviteSub = r.invites.stream.listen(_showInvite);
+    _noticeSub = r.notices.stream.listen((m) {
+      if (mounted && ActiveRoom.screenOpen.value) toast(context, m);
+    });
+    unawaited(r.loadMic());
     r.stage.seatPos = _seatCenter;
     _loadRoles();
     setState(() {});
@@ -182,6 +190,8 @@ class _RoomScreenState extends State<RoomScreen> {
     _r?.removeListener(_changed);
     _r?.closedReason.removeListener(_closed);
     _joinSub?.cancel();
+    _inviteSub?.cancel();
+    _noticeSub?.cancel();
     _scroll.dispose();
     _input.dispose();
     super.dispose();
@@ -202,18 +212,223 @@ class _RoomScreenState extends State<RoomScreen> {
       return;
     }
     if (!mounted) return;
-    await attempt(context, () async {
-      await App.i.rpc('take_seat', {'p_room': _id, 'p_seat': seat});
+    try {
+      await _r!.mySeatChange(() => App.i.rpc('take_seat', {'p_room': _id, 'p_seat': seat}));
       await _rtc?.refresh();
       await _rtc?.setMic(true);
-    });
+    } catch (e) {
+      if (!mounted) return;
+      if (errText(e).contains('mic requests')) {
+        await _r?.refreshRoom();
+        _applySheet();
+      } else {
+        toast(context, errText(e), bad: true);
+      }
+    }
   }
 
   Future<void> _leaveSeat() async {
     await attempt(context, () async {
-      await App.i.rpc('leave_seat', {'p_room': _id});
+      await _r!.mySeatChange(() => App.i.rpc('leave_seat', {'p_room': _id}), leaving: true);
       await _rtc?.refresh();
     });
+  }
+
+  // ---------- mic queue (apply / approve / invite) ----------
+  bool get _applyMode => _r?.micMode == 'apply';
+  bool get _applied => _r?.myApply != null;
+
+  Future<void> _apply() async {
+    if (await attempt(context, () => App.i.rpc('mic_apply', {'p_room': _id}), ok: 'Mic request sent. The host will let you in.')) {
+      await _r?.loadMic();
+    }
+  }
+
+  Future<void> _cancelApply() async {
+    if (await attempt(context, () => App.i.rpc('mic_cancel', {'p_room': _id}), ok: 'Request cancelled')) {
+      _r?.myApply = null;
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _applySheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.front_hand, color: C.gold, size: 40),
+            const SizedBox(height: 8),
+            Text(_applied ? 'Waiting for the host' : 'Apply for the mic', style: serif(20)),
+            const SizedBox(height: 6),
+            Text(
+              _applied ? 'Your request is in the queue. You go on the mic automatically when the host or a room admin accepts.' : 'This room uses mic requests. Send a request and the host or a room admin will put you on a seat.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: C.mute),
+            ),
+            const SizedBox(height: 16),
+            _applied
+                ? OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _cancelApply();
+                    },
+                    icon: const Icon(Icons.close, color: C.ruby),
+                    label: const Text('Cancel my request', style: TextStyle(color: C.text)),
+                  )
+                : GoldButton(label: 'Apply for mic', icon: Icons.front_hand, onTap: () {
+                    Navigator.pop(ctx);
+                    _apply();
+                  }),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _setMicMode(String mode) async {
+    if (await attempt(context, () => App.i.rpc('set_mic_mode', {'p_room': _id, 'p_mode': mode}),
+        ok: mode == 'apply' ? 'Listeners now apply for the mic' : 'Anyone can take a free seat')) {
+      await _r?.refreshRoom();
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _invite(String uid, {int? seat}) async {
+    final name = Profiles.get(uid)?['username'] ?? 'They';
+    await attempt(context, () => App.i.rpc('mic_invite', {'p_room': _id, 'p_user': uid, 'p_seat': seat}), ok: 'Invitation sent to $name');
+  }
+
+  void _pickToInvite({int? seat}) {
+    showRoomPeople(context, roomId: _id, onTapUser: (uid) {
+      if (uid == myId) return;
+      if (_seats.any((s) => s['user_id'] == uid)) {
+        toast(context, 'They are already on the mic');
+        return;
+      }
+      _invite(uid, seat: seat);
+    });
+  }
+
+  Future<void> _showInvite(Map<String, dynamic> inv) async {
+    if (!mounted || _inviteOpen || _mySeat != null) return;
+    _inviteOpen = true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.mic, color: C.gold, size: 40),
+        title: Text('Join the mic?', style: serif(20), textAlign: TextAlign.center),
+        content: Text('${inv['by'] ?? 'The host'} invited you to speak${inv['seat'] != null ? ' on mic No.${inv['seat']}' : ''}.', textAlign: TextAlign.center),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now', style: TextStyle(color: C.mute))),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: C.gold, foregroundColor: Colors.black), onPressed: () => Navigator.pop(ctx, true), child: const Text('Join mic')),
+        ],
+      ),
+    );
+    _inviteOpen = false;
+    if (!mounted || ok == null) return;
+    if (ok) {
+      final p = await Permission.microphone.request();
+      if (!p.isGranted) {
+        if (mounted) toast(context, 'Allow microphone access to speak', bad: true);
+        return;
+      }
+    }
+    if (!mounted) return;
+    await attempt(context, () async {
+      await _r!.mySeatChange(() => App.i.rpc('mic_invite_answer', {'p_req': inv['id'], 'p_accept': ok}));
+      if (ok) {
+        await _rtc?.refresh();
+        await _rtc?.setMic(true);
+      }
+    });
+  }
+
+  void _queueSheet() {
+    _r?.loadMic();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: .55,
+        maxChildSize: .9,
+        builder: (_, scroll) => ListenableBuilder(
+          listenable: _r!,
+          builder: (_, __) {
+            final q = _r?.micQueue ?? const [];
+            final free = _seats.where((s) => (s['seat'] as num) > 0 && s['user_id'] == null && s['locked'] != true).length;
+            return Column(children: [
+              const SizedBox(height: 10),
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: C.line, borderRadius: BorderRadius.circular(2))),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
+                child: Row(children: [
+                  Expanded(child: Text('Mic requests (${q.length})', style: serif(20))),
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _pickToInvite();
+                    },
+                    icon: const Icon(Icons.person_add_alt_1, color: C.gold, size: 18),
+                    label: const Text('Invite', style: TextStyle(color: C.gold)),
+                  ),
+                ]),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(children: [
+                  Text('$free free seat${free == 1 ? '' : 's'}', style: const TextStyle(color: C.mute, fontSize: 12)),
+                  const Spacer(),
+                  const Text('Apply mode', style: TextStyle(color: C.mute, fontSize: 12)),
+                  Switch(value: _applyMode, activeColor: C.gold, onChanged: (v) => _setMicMode(v ? 'apply' : 'free')),
+                ]),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: q.isEmpty
+                    ? const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('No one is waiting. Listeners who tap "Apply for mic" show up here.', textAlign: TextAlign.center, style: TextStyle(color: C.mute))))
+                    : ListView.builder(
+                        controller: scroll,
+                        itemCount: q.length,
+                        itemBuilder: (_, i) {
+                          final r = q[i];
+                          return ListTile(
+                            leading: Avatar(profile: r, size: 40),
+                            title: Row(children: [
+                              Flexible(child: Text('${r['username']}', overflow: TextOverflow.ellipsis)),
+                              const SizedBox(width: 6),
+                              LevelBadge((r['wealth_level'] as num?)?.toInt() ?? 1),
+                            ]),
+                            subtitle: Text('No.${i + 1} in line · ID ${r['public_id']}', style: const TextStyle(color: C.mute, fontSize: 12)),
+                            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                              IconButton(
+                                tooltip: 'Decline',
+                                icon: const Icon(Icons.close, color: C.ruby),
+                                onPressed: () async {
+                                  await attempt(context, () => App.i.rpc('mic_answer', {'p_req': r['id'], 'p_accept': false}));
+                                  await _r?.loadMic();
+                                },
+                              ),
+                              IconButton(
+                                tooltip: 'Accept',
+                                icon: const Icon(Icons.check_circle, color: C.emerald),
+                                onPressed: () async {
+                                  await attempt(context, () => App.i.rpc('mic_answer', {'p_req': r['id'], 'p_accept': true}), ok: '${r['username']} is on the mic');
+                                  await _r?.loadMic();
+                                },
+                              ),
+                            ]),
+                          );
+                        },
+                      ),
+              ),
+            ]);
+          },
+        ),
+      ),
+    );
   }
 
   Future<void> _seatAction(int seat, String action) =>
@@ -229,9 +444,12 @@ class _RoomScreenState extends State<RoomScreen> {
       }
       if (_isAdmin) {
         _sheet([
-          ('Take this seat', Icons.event_seat, () => _takeSeat(seat)),
+          if (_mySeat == null || _mySeat!['seat'] != 0) ('Take this seat', Icons.event_seat, () => _takeSeat(seat)),
+          ('Invite someone to No.$seat', Icons.person_add_alt_1, () => _pickToInvite(seat: seat)),
           ('Lock seat', Icons.lock, () => _seatAction(seat, 'lock')),
         ]);
+      } else if (_applyMode && _mySeat == null) {
+        _applySheet();
       } else {
         _takeSeat(seat);
       }
@@ -239,8 +457,10 @@ class _RoomScreenState extends State<RoomScreen> {
     }
     if (uid == myId) {
       final muted = !(_rtc?.micOn.value ?? true);
+      final forced = s['muted'] == true;
       _sheet([
-        (muted ? 'Turn mic on' : 'Mute my mic', muted ? Icons.mic : Icons.mic_off, () => _rtc?.setMic(muted)),
+        if (forced) ('Muted by a room admin', Icons.mic_off, () => toast(context, 'A room admin muted you. Ask them to unmute you.'))
+        else (muted ? 'Turn mic on' : 'Mute my mic', muted ? Icons.mic : Icons.mic_off, () => _rtc?.setMic(muted)),
         if (seat != 0) ('Leave seat', Icons.logout, _leaveSeat),
       ]);
       return;
@@ -309,6 +529,8 @@ class _RoomScreenState extends State<RoomScreen> {
               const Align(alignment: Alignment.centerLeft, child: Text('Room admin tools', style: TextStyle(color: C.mute, fontSize: 12, fontWeight: FontWeight.w700))),
               const SizedBox(height: 6),
               Wrap(spacing: 8, runSpacing: 8, children: [
+                if (seat == null)
+                  _tool(Icons.mic_external_on, 'Invite to mic', () { Navigator.pop(ctx); _invite(uid); }),
                 if (seat != null && seat != 0 && seatRow?['muted'] != true)
                   _tool(Icons.mic_off, 'Mute', () { Navigator.pop(ctx); _seatAction(sn, 'mute'); }),
                 if (seat != null && seat != 0 && seatRow?['muted'] == true)
@@ -474,6 +696,10 @@ class _RoomScreenState extends State<RoomScreen> {
             if (mounted) setState(() {});
           }
         }),
+      if (_isAdmin)
+        (_applyMode ? 'Mic mode: Apply  →  switch to Free' : 'Mic mode: Free  →  switch to Apply', Icons.front_hand, () => _setMicMode(_applyMode ? 'free' : 'apply')),
+      if (_isAdmin)
+        ('Mic requests (${_r?.micQueue.length ?? 0})', Icons.queue_music, _queueSheet),
       if (_isAdmin)
         ('Mute everyone on the mic', Icons.mic_off, () => attempt(context, () => App.i.rpc('room_mute_all', {'p_room': _id, 'p_muted': true}), ok: 'Everyone is muted')),
       if (_isAdmin)
@@ -726,8 +952,16 @@ class _RoomScreenState extends State<RoomScreen> {
         if (onSeat && _rtc != null)
           ValueListenableBuilder<bool>(
             valueListenable: _rtc!.micOn,
-            builder: (_, on, __) => _round(on ? Icons.mic : Icons.mic_off, on ? C.emerald : Colors.black45, () => _rtc!.setMic(!on)),
+            builder: (_, on, __) => _round(on ? Icons.mic : Icons.mic_off, on ? C.emerald : Colors.black45, () {
+              if (!on && _mySeat?['muted'] == true) {
+                toast(context, 'A room admin muted you. Ask them to unmute you.');
+                return;
+              }
+              _rtc!.setMic(!on);
+            }),
           )
+        else if (_applyMode && !_isAdmin)
+          _round(_applied ? Icons.hourglass_top : Icons.front_hand, _applied ? const Color(0xFF8F6A1E) : Colors.black45, _applySheet)
         else
           _round(Icons.event_seat, Colors.black45, () {
             final free = _seats.where((s) => (s['seat'] as num) > 0 && s['user_id'] == null && s['locked'] != true).firstOrNull;
@@ -737,6 +971,14 @@ class _RoomScreenState extends State<RoomScreen> {
               _takeSeat((free['seat'] as num).toInt());
             }
           }),
+        if (_isAdmin && (_applyMode || (_r?.micQueue.isNotEmpty ?? false))) ...[
+          const SizedBox(width: 8),
+          Badge(
+            isLabelVisible: (_r?.micQueue.length ?? 0) > 0,
+            label: Text('${_r?.micQueue.length ?? 0}'),
+            child: _round(Icons.front_hand, const Color(0xFF8F6A1E), _queueSheet),
+          ),
+        ],
         const SizedBox(width: 8),
         _round(Icons.sports_esports, const Color(0xFF6A3DE8), () => openGames(context, roomId: _id)),
         const SizedBox(width: 8),

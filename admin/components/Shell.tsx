@@ -36,6 +36,7 @@ const NAV: [string, string, string][] = [
 ];
 
 const AGENT_PAGES = ["/topups/", "/agents/"];
+const PUBLIC = ["/login/", "/privacy/", "/terms/"];
 
 export function Icon({ d, size = 18 }: { d: string; size?: number }) {
   return (
@@ -71,7 +72,7 @@ export default function Shell({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (me === null && path !== "/login/") router.replace("/login/");
+    if (me === null && !PUBLIC.includes(path)) router.replace("/login/");
   }, [me, path, router]);
   useEffect(() => setOpen(false), [path]);
   // agents only see their own top-up desk
@@ -83,7 +84,7 @@ export default function Shell({ children }: { children: ReactNode }) {
     <div className="toasts">{toasts.map((t) => <div key={t.id} className={"toast" + (t.bad ? " bad" : "")}>{t.text}</div>)}</div>
   );
 
-  if (path === "/login/") return <ToastCtx.Provider value={toast}>{children}{toastView}</ToastCtx.Provider>;
+  if (PUBLIC.includes(path)) return <ToastCtx.Provider value={toast}>{children}{toastView}</ToastCtx.Provider>;
   if (!me || (me.role === "agent" && !AGENT_PAGES.includes(path))) return <div className="center"><div className="spinner" /></div>;
 
   return (

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screens/auth_screens.dart';
@@ -30,6 +31,13 @@ Future<void> main() async {
   }
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
   ErrorReporter.install();
+  // "Remember me" was unticked at the last sign-in: start signed out on a fresh launch
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(rememberKey) == false && db.auth.currentSession != null) {
+      await db.auth.signOut(scope: SignOutScope.local);
+    }
+  } catch (_) {}
   // test builds only: sign in automatically (both values are empty in the real app)
   const autoEmail = String.fromEnvironment('AUTO_LOGIN_EMAIL');
   const autoPass = String.fromEnvironment('AUTO_LOGIN_PASSWORD');
@@ -181,17 +189,36 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   }
 }
 
-class _Splash extends StatelessWidget {
+class _Splash extends StatefulWidget {
   const _Splash();
   @override
+  State<_Splash> createState() => _SplashState();
+}
+
+class _SplashState extends State<_Splash> with SingleTickerProviderStateMixin {
+  late final _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))..repeat(reverse: true);
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => Scaffold(
+        backgroundColor: const Color(0xFF120A18),
         body: Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            ShaderMask(shaderCallback: (r) => C.goldGrad.createShader(r), child: Text('Adda', style: serif(52, color: Colors.white))),
-            const SizedBox(height: 8),
+            AnimatedBuilder(
+              animation: _c,
+              builder: (_, child) => Transform.scale(scale: 1 + _c.value * .05, child: child),
+              child: Image.asset('assets/brand/logo_mark.webp', width: 120, height: 120),
+            ),
+            const SizedBox(height: 14),
+            ShaderMask(shaderCallback: (r) => C.goldGrad.createShader(r), child: Text('Adda', style: serif(46, color: Colors.white))),
+            const SizedBox(height: 6),
             const Text('VOICE · PARTY · FRIENDS', style: TextStyle(letterSpacing: 4, fontSize: 11, color: C.mute)),
             const SizedBox(height: 28),
-            const SizedBox(width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 2.4, color: C.gold)),
+            const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.2, color: C.gold)),
           ]),
         ),
       );

@@ -323,3 +323,33 @@ insert into reel_hidden(user_id, reel_id) values ('00000000-0000-0000-0000-00000
 select count(*) as saved from reel_saves;
 reset role;
 select caption from reels where id = '11111111-1111-1111-1111-111111111111';
+-- mic queue (Yari style): Bob owns room 200; Dan (d) applies, Bob approves; Bob invites Cara (c)
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
+select (join_room(200, '1234')).id as dan_in;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+select set_mic_mode(200, 'apply');
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
+\set ON_ERROR_STOP 0
+select take_seat(200, 5); -- refused: apply mode
+\set ON_ERROR_STOP 1
+select mic_apply(200) > 0 as applied, mic_apply(200) = mic_apply(200) as same_request;
+select count(*) as dan_sees_own from mic_requests;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+select jsonb_array_length(mic_queue(200)) as queue_len;
+select mic_answer((select id from mic_requests where kind = 'apply' and status = 'pending' limit 1), true) as dan_seat;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+select leave_seat(200);
+select count(*) as cara_sees from mic_requests; -- not hers, not admin
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+select mic_invite(200, '00000000-0000-0000-0000-00000000000c', 7) > 0 as invited;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
+select (mic_my_invite(200))->>'by' as invited_by;
+select mic_invite_answer((select id from mic_requests where kind = 'invite' order by id desc limit 1), true) as cara_seat;
+\set ON_ERROR_STOP 0
+select mic_invite_answer((select id from mic_requests where kind = 'invite' order by id desc limit 1), true); -- already used
+select mic_answer(1, true); -- not an admin
+\set ON_ERROR_STOP 1
+reset role;
+select seat, user_id from room_seats where room_id = 200 and user_id is not null order by seat;
+select (select title from notifications where data->>'type' = 'mic_invite' limit 1) as invite_note;

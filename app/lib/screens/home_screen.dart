@@ -8,6 +8,7 @@ import '../services/api.dart';
 import '../services/tour.dart' show tourEnabled;
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/home_fx.dart';
 import 'games_kit.dart';
 import 'inbox_screen.dart';
 import 'leaderboard_screen.dart';
@@ -121,7 +122,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
 
     return Scaffold(
-      body: SafeArea(
+      body: FxClockHost(
+        child: Stack(children: [
+          const Positioned.fill(child: AmbientBackdrop()),
+          SafeArea(
         bottom: false,
         child: RefreshIndicator(
           color: C.gold,
@@ -130,8 +134,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             headerSliverBuilder: (context, _) => [
               SliverAppBar(
                 floating: true,
-                titleSpacing: 16,
-                title: ShaderMask(shaderCallback: (r) => C.goldGrad.createShader(r), child: Text('Adda', style: serif(30, color: Colors.white))),
+                titleSpacing: 12,
+                backgroundColor: C.bg.withValues(alpha: .9),
+                surfaceTintColor: Colors.transparent,
+                title: Row(mainAxisSize: MainAxisSize.min, children: [
+                  FxFloat(amp: 2, child: Image.asset('assets/brand/logo_mark.webp', width: 34, height: 34)),
+                  const SizedBox(width: 6),
+                  ShimmerText('Adda', style: serif(30)),
+                ]),
                 actions: [
                   IconButton(tooltip: 'Daily reward', onPressed: _checkin, icon: Floaty(amp: 2, child: art('coins_pile', size: 30))),
                   ValueListenableBuilder<int>(
@@ -166,10 +176,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: .78),
                         itemCount: rooms.length,
-                        itemBuilder: (_, i) => RoomCard(room: rooms[i]),
+                        itemBuilder: (_, i) => FadeSlideIn(key: ValueKey('$tab-${rooms[i]['id']}'), index: i, child: RoomCard(room: rooms[i])),
                       ),
           ),
         ),
+      ),
+        ]),
       ),
     );
   }
@@ -183,7 +195,7 @@ class _TabHeader extends SliverPersistentHeaderDelegate {
   @override
   double get maxExtent => 46;
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => Container(color: C.bg, child: tabBar);
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => Container(color: C.bg.withValues(alpha: .94), child: tabBar);
   @override
   bool shouldRebuild(covariant _TabHeader old) => old.tabBar != tabBar;
 }
@@ -196,13 +208,17 @@ class RoomCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final r = room;
     final listeners = (r['listeners'] as num?)?.toInt() ?? 0;
-    return GestureDetector(
-      onTap: () => openRoom(context, (r['id'] as num).toInt()),
-      child: Container(
+    final featured = r['featured'] == true;
+    final id = (r['id'] as num).toInt();
+    return PressScale(
+      onTap: () => openRoom(context, id),
+      child: Stack(children: [
+        Positioned.fill(child: Container(
         decoration: BoxDecoration(
           color: C.card,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: r['featured'] == true ? C.gold2 : C.line),
+          border: Border.all(color: featured ? C.gold2 : C.line),
+          boxShadow: featured ? [BoxShadow(color: C.gold.withValues(alpha: .18), blurRadius: 14, spreadRadius: -2)] : null,
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
@@ -220,7 +236,7 @@ class RoomCard extends StatelessWidget {
               Positioned(
                 right: 8,
                 top: 8,
-                child: _chip(compact(listeners), icon: Icons.graphic_eq),
+                child: _chip(compact(listeners), live: listeners > 0 ? LiveBars(size: 11, seed: id % 7) : null, icon: listeners > 0 ? null : Icons.graphic_eq),
               ),
               Positioned(
                 left: 10,
@@ -243,17 +259,20 @@ class RoomCard extends StatelessWidget {
             ]),
           ),
         ]),
-      ),
+        )),
+        if (featured) const Positioned.fill(child: GlowBorder(radius: 18)),
+      ]),
     );
   }
 
-  Widget _chip(String text, {IconData? icon, bool gold = false}) => Container(
+  Widget _chip(String text, {IconData? icon, Widget? live, bool gold = false}) => Container(
         margin: const EdgeInsets.only(right: 4),
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
         decoration: BoxDecoration(gradient: gold ? C.goldGrad : null, color: gold ? null : Colors.black54, borderRadius: BorderRadius.circular(20)),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (live != null) live,
           if (icon != null) Icon(icon, size: 12, color: gold ? const Color(0xFF1A1206) : Colors.white),
-          if (icon != null && text.isNotEmpty) const SizedBox(width: 3),
+          if ((icon != null || live != null) && text.isNotEmpty) const SizedBox(width: 3),
           if (text.isNotEmpty) Text(text, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: gold ? const Color(0xFF1A1206) : Colors.white)),
         ]),
       );
@@ -315,7 +334,15 @@ class _BannersState extends State<_Banners> {
                   gradient: LinearGradient(colors: [_hex(b['color_from'], C.ruby), _hex(b['color_to'], C.bg)], begin: Alignment.topLeft, end: Alignment.bottomRight),
                 ),
                 child: Stack(fit: StackFit.expand, children: [
-                  if (img != null && img.isNotEmpty) CachedNetworkImage(imageUrl: img, fit: BoxFit.cover),
+                  if (img != null && img.isNotEmpty)
+                    AnimatedBuilder(
+                      animation: _pc,
+                      builder: (_, child) {
+                        final page = _pc.hasClients && _pc.position.haveDimensions ? (_pc.page ?? _i.toDouble()) : _i.toDouble();
+                        return Transform.translate(offset: Offset((page - i) * 60, 0), child: Transform.scale(scale: 1.12, child: child));
+                      },
+                      child: CachedNetworkImage(imageUrl: img, fit: BoxFit.cover),
+                    ),
                   if (img == null || img.isEmpty)
                     Padding(
                       padding: const EdgeInsets.all(18),
@@ -332,6 +359,7 @@ class _BannersState extends State<_Banners> {
                         ],
                       ]),
                     ),
+                  LightSweep(period: 5, offset: i * 1.3),
                 ]),
               ),
             );
@@ -372,7 +400,7 @@ class _Events extends StatelessWidget {
             final e = events[i];
             final at = DateTime.tryParse('${e['starts_at']}')?.toLocal();
             final going = e['me'] == true;
-            return Container(
+            return FadeSlideIn(index: i, child: Container(
               width: 240,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: C.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: C.line)),
@@ -396,7 +424,7 @@ class _Events extends StatelessWidget {
                   }, ok: going ? 'Removed from your events' : 'We will remind you'),
                 ),
               ]),
-            );
+            ));
           },
         ),
       ),

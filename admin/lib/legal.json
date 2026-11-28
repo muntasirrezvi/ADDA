@@ -1,0 +1,40 @@
+{
+  "updated": "28 November 2026",
+  "privacy": {
+    "title": "Privacy Policy",
+    "intro": "This policy explains what information Adda collects, why we collect it, and the choices you have. By using Adda you agree to this policy.",
+    "sections": [
+      ["Who we are", "Adda is a social voice-party app where people join voice rooms, chat, send virtual gifts and play coin games. Adda is operated by Riot. You can reach us at support@adda.app."],
+      ["Information you give us", "When you create an account we collect your username, email address, phone number, country and password (stored only as a secure hash by our authentication provider). You may also add a profile photo, bio, birthday, gender and other profile details. Messages, room titles, reels, comments and reports you post are stored so other users can see them as you intend."],
+      ["Information collected automatically", "We record basic technical data needed to run the service: device model, operating system, app version, IP address, crash and error reports, and when you were last active. We record coin, diamond, gift and game transactions so your balance stays correct and to prevent fraud."],
+      ["Microphone and voice", "Adda uses your microphone only when you take a seat on a mic in a voice room. Voice is streamed live through our real-time audio provider (Agora) to the other people in the room. We do not record or store room audio. You can mute yourself or leave the seat at any time. While you are in a room the app may keep running in the background (with a notification) so the audio does not stop."],
+      ["Photos, camera and storage", "We access your camera or photo library only when you choose a photo or video to upload, such as a profile picture or a reel."],
+      ["Notifications", "If you allow notifications we use them for messages, mic invitations, follows, gifts and important account updates. You can turn them off in your phone settings."],
+      ["How we use information", "To create and secure your account; to run voice rooms, chat, gifts and games; to show leaderboards and profiles; to keep balances and transaction history; to detect cheating, spam and abuse; to respond to reports and support requests; and to fix crashes and improve the app."],
+      ["Virtual items", "Coins, diamonds and gifts are virtual items for use inside Adda only. They have no real-money value, cannot be withdrawn or exchanged for cash, and games in Adda are for entertainment with virtual coins only."],
+      ["Sharing", "We do not sell your personal information. We share data only with service providers that run Adda for us (Supabase for database, authentication and storage; Agora for real-time voice; payment and app-store providers when you buy coins), when the law requires it, or to protect users and the service. Your public profile, room activity and posts are visible to other users."],
+      ["Data retention", "We keep your information while your account is active. If you delete your account (Settings, Delete my account) your profile, rooms and balances are removed. Some records, such as transaction logs and reports, may be kept for a limited time where needed for security, fraud prevention or legal reasons."],
+      ["Your choices and rights", "You can view and edit your profile at any time, hide your last-seen status, block other users, and delete your account from inside the app. Depending on where you live you may have the right to access, correct or delete your data; contact us to make a request."],
+      ["Children", "Adda is for people aged 18 and older. We do not knowingly collect information from anyone under 18. If you believe a minor is using Adda, please report the account or contact us and we will remove it."],
+      ["Security", "We use encryption in transit, access controls and row-level security on our database to protect your data. No service is completely secure, so please keep your password private."],
+      ["Changes", "We may update this policy. When we make important changes we will let you know in the app. The date at the top shows the latest version."],
+      ["Contact", "Questions about privacy? Email support@adda.app."]
+    ]
+  },
+  "terms": {
+    "title": "Terms of Service",
+    "intro": "These terms are the rules for using Adda. By creating an account you accept them.",
+    "sections": [
+      ["Eligibility", "You must be at least 18 years old and able to agree to these terms. One person may not run accounts to cheat or evade a ban."],
+      ["Your account", "Keep your login details private. You are responsible for activity on your account. Tell us right away if you think someone else has access."],
+      ["Community rules", "Be respectful. Do not post or broadcast nudity or sexual content, hate speech, threats, harassment, violence, illegal activity, spam, scams or other people's private information. Do not impersonate others. Room owners and admins may mute, remove or block people in their rooms, and Adda may remove content or suspend accounts that break these rules."],
+      ["Virtual coins, diamonds and gifts", "Coins are bought or earned for use inside Adda. Diamonds are earned from gifts you receive. Both are virtual items with no cash value; they cannot be withdrawn, refunded or exchanged for money, except where the law requires. Purchases are final once coins are delivered. We may adjust balances that came from errors, fraud or abuse."],
+      ["Games", "Games in Adda use virtual coins only and are for entertainment. There are no real-money prizes. Using bots, exploits or multiple accounts to play is not allowed."],
+      ["Your content", "You own what you post. You give Adda permission to host, show and share it inside the service so the app can work. You confirm you have the rights to anything you upload."],
+      ["Ending your use", "You can stop using Adda and delete your account at any time. We may suspend or close accounts that break these terms or put other users at risk."],
+      ["Disclaimers", "Adda is provided as is. We work to keep it running but cannot promise it will always be available or error-free. To the extent the law allows, we are not liable for indirect losses or for content posted by other users."],
+      ["Changes", "We may update these terms. If you keep using Adda after an update, the new terms apply."],
+      ["Contact", "Email support@adda.app."]
+    ]
+  }
+}

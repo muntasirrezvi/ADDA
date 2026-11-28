@@ -213,3 +213,35 @@ if pbx.exists():
     pbx.write_text(t)
 
 print("patched", man.relative_to(root))
+
+# ---- Branding: launcher icon, adaptive icon, splash (replaces Flutter's default logo)
+import shutil
+brand = root / "tool/branding"
+res = root / "android/app/src/main/res"
+if (brand / "android/res").is_dir() and res.is_dir():
+    for f in (brand / "android/res").rglob("*"):
+        if f.is_file():
+            dst = res / f.relative_to(brand / "android/res")
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(f, dst)
+    m = man.read_text()
+    if 'android:roundIcon' not in m:
+        m = m.replace('android:icon="@mipmap/ic_launcher"',
+                      'android:icon="@mipmap/ic_launcher"\n        android:roundIcon="@mipmap/ic_launcher_round"', 1)
+        man.write_text(m)
+appicon = root / "ios/Runner/Assets.xcassets/AppIcon.appiconset"
+if (brand / "ios").is_dir() and appicon.is_dir():
+    for f in (brand / "ios").glob("*.png"):
+        shutil.copyfile(f, appicon / f.name)
+launch = root / "ios/Runner/Assets.xcassets/LaunchImage.imageset"
+splash = brand / "android/res/drawable-xxxhdpi/splash_logo.png"
+if launch.is_dir() and splash.is_file():
+    for n in ("LaunchImage.png", "LaunchImage@2x.png", "LaunchImage@3x.png"):
+        shutil.copyfile(splash, launch / n)
+    sb = root / "ios/Runner/Base.lproj/LaunchScreen.storyboard"
+    if sb.is_file():
+        t = sb.read_text()
+        t = re.sub(r'<color key="backgroundColor"[^/]*/>',
+                   '<color key="backgroundColor" red="0.07" green="0.04" blue="0.094" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>', t)
+        sb.write_text(t)
+print("branding applied")

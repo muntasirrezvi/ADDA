@@ -20,6 +20,7 @@ import 'rewards.dart';
 import 'wallet_screen.dart';
 import 'wallet_tools.dart';
 import 'history_screen.dart';
+import 'legal_screen.dart';
 
 /// Your own profile tab.
 class MeScreen extends StatelessWidget {
@@ -629,18 +630,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ListTile(
           leading: const Icon(Icons.privacy_tip, color: C.gold),
           title: const Text('Privacy policy'),
-          onTap: () {
-            final u = App.i.settings['privacy_url'];
-            if (u is String && u.isNotEmpty) launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
-          },
+          onTap: () => LegalScreen.open(context),
         ),
         ListTile(
           leading: const Icon(Icons.description, color: C.gold),
           title: const Text('Terms of service'),
-          onTap: () {
-            final u = App.i.settings['terms_url'];
-            if (u is String && u.isNotEmpty) launchUrl(Uri.parse(u), mode: LaunchMode.externalApplication);
-          },
+          onTap: () => LegalScreen.open(context, terms: true),
         ),
         const Divider(),
         ListTile(

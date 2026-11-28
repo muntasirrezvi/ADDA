@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'legal_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -17,12 +19,45 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _hide = true;
   final _id = TextEditingController();
   final _pw = TextEditingController();
+  bool _remember = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRemembered();
+  }
+
+  Future<void> _loadRemembered() async {
+    final p = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _remember = p.getBool(rememberKey) ?? true;
+      final id = p.getString('remember_id');
+      if (_remember && id != null && id.isNotEmpty) {
+        _phone = p.getBool('remember_phone') ?? false;
+        _id.text = id;
+      }
+    });
+  }
+
+  Future<void> _saveRemembered(String id) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool(rememberKey, _remember);
+    if (_remember) {
+      await p.setString('remember_id', id);
+      await p.setBool('remember_phone', _phone);
+    } else {
+      await p.remove('remember_id');
+      await p.remove('remember_phone');
+    }
+  }
 
   Future<void> _login() async {
     final id = _id.text.trim();
     if (id.isEmpty || _pw.text.isEmpty) return toast(context, 'Enter your ${_phone ? 'phone number' : 'email'} and password', bad: true);
     setState(() => _busy = true);
     try {
+      await _saveRemembered(id);
       if (_phone) {
         final r = await App.i.fn('login-phone', {'phone': id, 'password': _pw.text});
         final refresh = (r as Map)['refresh_token'] as String?;
@@ -50,8 +85,16 @@ class _LoginScreenState extends State<LoginScreen> {
         decoration: const BoxDecoration(gradient: RadialGradient(center: Alignment(-.6, -.8), radius: 1.2, colors: [Color(0xFF2A1F13), C.bg])),
         child: SafeArea(
           child: ListView(padding: const EdgeInsets.fromLTRB(24, 48, 24, 24), children: [
-            ShaderMask(shaderCallback: (r) => C.goldGrad.createShader(r), child: Text('Adda', style: serif(56, color: Colors.white))),
-            const Text('Voice rooms, gifts and friends worldwide', style: TextStyle(color: C.mute)),
+            Row(children: [
+              Image.asset('assets/brand/logo_icon.webp', width: 64, height: 64),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  ShaderMask(shaderCallback: (r) => C.goldGrad.createShader(r), child: Text('Adda', style: serif(48, color: Colors.white))),
+                  const Text('Voice rooms, gifts and friends worldwide', style: TextStyle(color: C.mute)),
+                ]),
+              ),
+            ]),
             const SizedBox(height: 36),
             SegmentedButton<bool>(
               segments: const [ButtonSegment(value: false, label: Text('Email'), icon: Icon(Icons.mail_outline)), ButtonSegment(value: true, label: Text('Phone'), icon: Icon(Icons.phone_iphone))],
@@ -83,7 +126,21 @@ class _LoginScreenState extends State<LoginScreen> {
                 suffixIcon: IconButton(icon: Icon(_hide ? Icons.visibility_off : Icons.visibility), onPressed: () => setState(() => _hide = !_hide)),
               ),
             ),
-            Align(alignment: Alignment.centerRight, child: TextButton(onPressed: _forgot, child: const Text('Forgot password?', style: TextStyle(color: C.mute)))),
+            Row(children: [
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: Checkbox(value: _remember, activeColor: C.gold, checkColor: Colors.black, onChanged: (v) => setState(() => _remember = v ?? true)),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _remember = !_remember),
+                  child: const Text('Remember me', style: TextStyle(color: C.text)),
+                ),
+              ),
+              TextButton(onPressed: _forgot, child: const Text('Forgot password?', style: TextStyle(color: C.mute))),
+            ]),
             const SizedBox(height: 8),
             GoldButton(label: 'Sign in', busy: _busy, onTap: _login),
             const SizedBox(height: 18),
@@ -94,6 +151,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: const Text('Create an account', style: TextStyle(color: C.gold, fontWeight: FontWeight.w700)),
               ),
             ]),
+            const SizedBox(height: 28),
+            const LegalLinks(),
           ]),
         ),
       ),
@@ -194,6 +253,7 @@ class _SignupScreenState extends State<SignupScreen> {
           activeColor: C.gold,
           title: const Text('I am 18 or older and accept the Terms and Privacy Policy', style: TextStyle(fontSize: 13)),
         ),
+        const LegalLinks(),
         const SizedBox(height: 12),
         GoldButton(label: 'Create account', busy: _busy, onTap: _signup),
         const SizedBox(height: 12),
@@ -201,4 +261,17 @@ class _SignupScreenState extends State<SignupScreen> {
       ]),
     );
   }
+}
+
+/// Key for the "Remember me" choice. When it is false the app signs out on the next cold start.
+const rememberKey = 'remember_me';
+
+class LegalLinks extends StatelessWidget {
+  const LegalLinks({super.key});
+  @override
+  Widget build(BuildContext context) => Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        TextButton(onPressed: () => LegalScreen.open(context), child: const Text('Privacy Policy', style: TextStyle(color: C.mute, fontSize: 12))),
+        const Text('·', style: TextStyle(color: C.mute)),
+        TextButton(onPressed: () => LegalScreen.open(context, terms: true), child: const Text('Terms of Service', style: TextStyle(color: C.mute, fontSize: 12))),
+      ]);
 }

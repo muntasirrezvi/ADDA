@@ -49,3 +49,14 @@ img.mini{width:44px;height:44px;border-radius:8px;object-fit:cover;display:block
 .order{display:flex;flex-direction:column;gap:6px}.order li{list-style:none;display:flex;align-items:center;gap:10px;background:#100d0b;border:1px solid var(--line);border-radius:10px;padding:8px 10px}.order li b{flex:1}.order{padding:0;margin:0}
 @media(max-width:860px){aside{position:fixed;left:0;top:0;z-index:40;transform:translateX(-100%);transition:.25s}aside.open{transform:none}
 aside.open+.scrim{display:block;position:fixed;inset:0;background:#0008;z-index:30}main{padding:18px 14px 50px}.menu{display:inline-flex;margin-bottom:10px}h1{font-size:23px}.kv{grid-template-columns:1fr}}
+
+/* public legal pages */
+.legal { max-width: 760px; margin: 0 auto; padding: 48px 22px 64px; line-height: 1.65; }
+.legal-head { margin-bottom: 22px; }
+.legal .brand { font-family: "Bodoni Moda", serif; font-size: 34px; color: var(--gold, #d8b26a); }
+.legal h1 { font-family: "Bodoni Moda", serif; font-size: 30px; margin: 6px 0 2px; }
+.legal h2 { font-size: 17px; margin: 26px 0 6px; color: var(--gold, #d8b26a); }
+.legal p { margin: 0 0 10px; }
+.legal .muted { opacity: .65; font-size: 14px; }
+.legal-foot { margin-top: 36px; }
+.legal a { color: var(--gold, #d8b26a); }
