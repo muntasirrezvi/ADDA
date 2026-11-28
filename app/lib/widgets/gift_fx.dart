@@ -254,7 +254,7 @@ class _GiftStageState extends State<GiftStage> with TickerProviderStateMixin {
           child: Container(
             width: heroSize,
             height: heroSize,
-            decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: colors.first.withValues(alpha: .35), blurRadius: 90, spreadRadius: 10)]),
+            decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [colors.first.withValues(alpha: .35), colors.first.withValues(alpha: 0)])),
             child: hero,
           ),
         ),

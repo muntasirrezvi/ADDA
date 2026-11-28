@@ -40,7 +40,7 @@ Future<void> runTour(NavigatorState nav) async {
   await wait(800);
   shot('home');
   await wait(900);
-  // gift panel
+  // gift panel (big animations are checked at the end)
   final gifts = List<Map<String, dynamic>>.from(await db.from('gifts').select().eq('active', true).order('sort'));
   final bgRoute = MaterialPageRoute(builder: (_) => const Scaffold(body: RoomBackground(themeId: 'galaxy')));
   nav.push(bgRoute);
