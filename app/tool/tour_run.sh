@@ -12,7 +12,7 @@ for scale in 1.0 1.3; do
   adb logcat -c
   adb shell monkey -p $pkg -c android.intent.category.LAUNCHER 1 >/dev/null
   seen=""
-  for i in $(seq 1 240); do
+  for i in $(seq 1 200); do
     sleep 1
     lines=$(adb logcat -d -s flutter:I | grep -o "ADDA_TOUR [a-z]* *[a-z0-9_]*" || true)
     while read -r l; do
@@ -25,7 +25,7 @@ for scale in 1.0 1.3; do
         echo "shot $scale $name"
       fi
     done <<< "$lines"
-    case "$seen" in *"ADDA_TOUR done"*) break;; esac
+    adb logcat -d -s flutter:I | grep -q "ADDA_TOUR done" && break
     adb shell pidof $pkg >/dev/null || { echo "APP NOT RUNNING at ${i}s ($scale)"; adb logcat -d | grep -E "FATAL|AndroidRuntime: |E/flutter" | tail -30; break; }
   done
   adb logcat -d | grep -E "E/flutter|ADDA error|Another exception|RenderFlex overflowed|overflowed by" | head -60 > "shots/${scale}_errors.txt"
