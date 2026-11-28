@@ -293,35 +293,7 @@ class _GiftStageState extends State<GiftStage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _metalTitle(String text, double t) {
-    final sweep = ((t - .25) / .5).clamp(0.0, 1.0);
-    const style = TextStyle(fontSize: 46, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, letterSpacing: .5, height: 1);
-    return FittedBox(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Stack(children: [
-          Text(text, style: style.copyWith(foreground: Paint()..style = PaintingStyle.stroke..strokeWidth = 6..color = const Color(0xFF3A1A00))),
-          ShaderMask(
-            blendMode: BlendMode.srcATop,
-            shaderCallback: (r) => LinearGradient(
-              begin: Alignment(-1.5 + sweep * 3, -.4),
-              end: Alignment(-1 + sweep * 3, .4),
-              colors: [Colors.white.withValues(alpha: 0), Colors.white.withValues(alpha: .9), Colors.white.withValues(alpha: 0)],
-            ).createShader(r),
-            child: ShaderMask(
-              shaderCallback: (r) => const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFFFFFDF0), Color(0xFFFFD54F), Color(0xFFB8741A), Color(0xFFFFE9A8), Color(0xFF8A5A0A)],
-                stops: [0, .35, .55, .7, 1],
-              ).createShader(r),
-              child: Text(text, style: style.copyWith(color: Colors.white)),
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
+  Widget _metalTitle(String text, double t) => MetalText(text, size: 46, sweep: ((t - .25) / .5).clamp(0.0, 1.0));
 
   Color _colorFor(GiftShow g) => (giftLook[g.gift['id']]?.$2 ?? const [C.gold]).first;
 }
@@ -463,4 +435,44 @@ class _Burst extends CustomPainter {
 
   @override
   bool shouldRepaint(_Burst old) => true;
+}
+
+
+/// Gold metallic letters drawn with gradient paint (no extra layers, light on cheap phones).
+class MetalText extends StatelessWidget {
+  const MetalText(this.text, {super.key, this.size = 46, this.sweep = -1, this.tint = const Color(0xFFFFD54F)});
+  final String text;
+  final double size;
+  final double sweep;
+  final Color tint;
+  @override
+  Widget build(BuildContext context) {
+    final base = TextStyle(fontSize: size, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, letterSpacing: .5, height: 1.1);
+    final w = text.length * size * .62;
+    final rect = Rect.fromLTWH(0, 0, w, size * 1.2);
+    final gold = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [const Color(0xFFFFFDF0), tint, const Color(0xFFB8741A), const Color(0xFFFFE9A8), const Color(0xFF8A5A0A)],
+      stops: const [0, .35, .55, .7, 1],
+    ).createShader(rect);
+    return FittedBox(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Stack(children: [
+          Text(text, style: base.copyWith(foreground: Paint()..style = PaintingStyle.stroke..strokeWidth = size * .13..color = const Color(0xFF3A1A00))),
+          Text(text, style: base.copyWith(foreground: Paint()..shader = gold)),
+          if (sweep >= 0 && sweep <= 1)
+            Text(text,
+                style: base.copyWith(
+                    foreground: Paint()
+                      ..shader = LinearGradient(
+                        begin: Alignment(-1.5 + sweep * 3, -.4),
+                        end: Alignment(-1 + sweep * 3, .4),
+                        colors: [Colors.white.withValues(alpha: 0), Colors.white.withValues(alpha: .85), Colors.white.withValues(alpha: 0)],
+                      ).createShader(rect))),
+        ]),
+      ),
+    );
+  }
 }

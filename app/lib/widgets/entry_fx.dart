@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../services/api.dart';
 import 'common.dart';
+import 'gift_fx.dart' show MetalText;
 
 /// "X joined the room": a golden banner flies across the top of the room, and people with a
 /// higher level get a big metallic "Lv.N" entrance in the middle of the room.
@@ -82,14 +83,21 @@ class _EntryShowState extends State<EntryShow> with SingleTickerProviderStateMix
         border: Border.all(color: f[2].withValues(alpha: .9), width: 1.5),
         boxShadow: [BoxShadow(color: f[0].withValues(alpha: .6), blurRadius: 16)],
       ),
-      child: ShaderMask(
-        blendMode: BlendMode.srcATop,
-        shaderCallback: (r) => LinearGradient(
-          begin: Alignment(-1.6 + shine * 3.2, 0),
-          end: Alignment(-1.1 + shine * 3.2, 0),
-          colors: [Colors.white.withValues(alpha: 0), Colors.white.withValues(alpha: .55), Colors.white.withValues(alpha: 0)],
-        ).createShader(r),
-        child: Row(children: [
+      child: Stack(children: [
+        Positioned.fill(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(23),
+            child: FractionalTranslation(
+              translation: Offset(-1 + shine * 2, 0),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [Colors.white.withValues(alpha: 0), Colors.white.withValues(alpha: .28), Colors.white.withValues(alpha: 0)], stops: const [.35, .5, .65]),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Row(children: [
           const SizedBox(width: 3),
           Container(
             decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: f[2], width: 2)),
@@ -111,7 +119,7 @@ class _EntryShowState extends State<EntryShow> with SingleTickerProviderStateMix
           ),
           const SizedBox(width: 30),
         ]),
-      ),
+      ]),
     );
   }
 
@@ -140,35 +148,7 @@ class _EntryShowState extends State<EntryShow> with SingleTickerProviderStateMix
                 ),
               ),
               CustomPaint(size: const Size(260, 120), painter: _SparkPainter(_sparks, t, f[2])),
-              // dark outline for depth
-              Text('Lv.$lv',
-                  style: TextStyle(
-                    fontSize: 64,
-                    fontWeight: FontWeight.w900,
-                    fontStyle: FontStyle.italic,
-                    letterSpacing: 1,
-                    foreground: Paint()
-                      ..style = PaintingStyle.stroke
-                      ..strokeWidth = 7
-                      ..color = const Color(0xFF2A1A05),
-                  )),
-              ShaderMask(
-                blendMode: BlendMode.srcATop,
-                shaderCallback: (r) => LinearGradient(
-                  begin: Alignment(-1.5 + sweep * 3, -.4),
-                  end: Alignment(-1 + sweep * 3, .4),
-                  colors: [Colors.white.withValues(alpha: 0), Colors.white.withValues(alpha: .85), Colors.white.withValues(alpha: 0)],
-                ).createShader(r),
-                child: ShaderMask(
-                  shaderCallback: (r) => LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [const Color(0xFFFFFDF0), f[2], const Color(0xFFB8741A), const Color(0xFFFFE9A8), const Color(0xFF8A5A0A)],
-                    stops: const [0, .35, .55, .7, 1],
-                  ).createShader(r),
-                  child: Text('Lv.$lv', style: const TextStyle(fontSize: 64, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, letterSpacing: 1, color: Colors.white)),
-                ),
-              ),
+              MetalText('Lv.$lv', size: 64, sweep: sweep, tint: f[2]),
             ]),
           ),
         ),

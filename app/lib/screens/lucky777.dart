@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import 'casino_kit.dart';
 import 'games_kit.dart';
+import '../widgets/gift_fx.dart' show MetalText;
 
 /// Lucky 777: three reels, three rows, five lines. The result comes from the server. Coins only.
 class Lucky777 extends StatefulWidget {
@@ -380,10 +381,7 @@ class _Lucky777State extends State<Lucky777> with TickerProviderStateMixin {
               child: Transform.scale(
                 scale: .3 + .7 * scale,
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  ShaderMask(
-                    shaderCallback: (r) => const LinearGradient(colors: [Color(0xFFFFF3B0), Color(0xFFFFC107), Color(0xFFFF8F00)]).createShader(r),
-                    child: const Text('BIG WIN', style: TextStyle(color: Colors.white, fontSize: 64, fontWeight: FontWeight.w900, letterSpacing: 2, shadows: [Shadow(color: Colors.black87, blurRadius: 12)])),
-                  ),
+                  MetalText('BIG WIN', size: 64, sweep: ((t - .2) / .5).clamp(0.0, 1.0)),
                   CountUp(_lastWin, size: 34),
                 ]),
               ),
