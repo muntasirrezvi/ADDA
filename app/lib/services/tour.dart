@@ -74,6 +74,20 @@ Future<void> runTour(NavigatorState nav) async {
   await wait(900);
   shot('entry');
   await wait(4500);
+  final fw = gifts.where((g) => g['id'] == 'firework').firstOrNull;
+  if (fw != null) {
+    stage.play(GiftShow(gift: fw, from: 'Tester', to: 'Friend', qty: 1));
+    await wait(1200);
+    shot('gift_firework');
+    await wait(3500);
+  }
+  final rose0 = gifts.where((g) => g['id'] == 'rose').firstOrNull;
+  if (rose0 != null) {
+    stage.play(GiftShow(gift: rose0, from: 'Tester', to: 'Friend', qty: 10));
+    await wait(500);
+    shot('gift_rose0');
+    await wait(2500);
+  }
   final car = gifts.where((g) => g['id'] == 'car').firstOrNull;
   if (car != null) {
     stage.play(GiftShow(gift: car, from: 'Tester', to: 'Friend', qty: 1));
