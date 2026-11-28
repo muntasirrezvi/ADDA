@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs the screenshot tour on a small screen with normal and large text. Saves shots/<scale>_<name>.jpg
+# Runs the screenshot tour on a small screen with normal and large text. Saves shots/<scale>_<name>.png
 apk=$1; pkg=app.adda.voice
 mkdir -p shots
 adb install -r "$apk" >/dev/null
@@ -10,26 +10,25 @@ for scale in 1.0 1.3; do
   adb shell pm clear $pkg >/dev/null
   adb shell pm grant $pkg android.permission.POST_NOTIFICATIONS 2>/dev/null
   adb logcat -c
+  adb logcat -s flutter:I > /tmp/flog.txt 2>/dev/null &
+  lp=$!
   adb shell monkey -p $pkg -c android.intent.category.LAUNCHER 1 >/dev/null
-  seen=""
-  for i in $(seq 1 200); do
+  done_shots=0
+  for i in $(seq 1 170); do
     sleep 1
-    lines=$(adb logcat -d -s flutter:I | grep -o "ADDA_TOUR [a-z]* *[a-z0-9_]*" || true)
-    while read -r l; do
-      [ -z "$l" ] && continue
-      case "$seen" in *"|$l|"*) continue;; esac
-      seen="$seen|$l|"
-      name=$(echo "$l" | awk '{print $3}')
-      if [ "$(echo "$l" | awk '{print $2}')" = "shot" ]; then
-        adb exec-out screencap -p > /tmp/s.png && convert /tmp/s.png -resize 50% -quality 72 "shots/${scale}_${name}.jpg"
-        echo "shot $scale $name"
-      fi
-    done <<< "$lines"
-    adb logcat -d -s flutter:I | grep -q "ADDA_TOUR done" && break
-    adb shell pidof $pkg >/dev/null || { echo "APP NOT RUNNING at ${i}s ($scale)"; adb logcat -d | grep -E "FATAL|AndroidRuntime: |E/flutter" | tail -30; break; }
+    n=$(grep -c "ADDA_TOUR shot" /tmp/flog.txt)
+    while [ "$done_shots" -lt "$n" ]; do
+      done_shots=$((done_shots + 1))
+      name=$(grep "ADDA_TOUR shot" /tmp/flog.txt | sed -n "${done_shots}p" | awk '{print $NF}')
+      adb exec-out screencap -p > "shots/${scale}_${name}.png"
+      echo "shot $scale $name"
+    done
+    grep -q "ADDA_TOUR done" /tmp/flog.txt && break
+    if ! adb shell pidof $pkg >/dev/null; then echo "APP NOT RUNNING at ${i}s ($scale)"; break; fi
   done
-  adb logcat -d | grep -E "E/flutter|ADDA error|Another exception|RenderFlex overflowed|overflowed by" | head -60 > "shots/${scale}_errors.txt"
-  echo "== errors ($scale):"; cat "shots/${scale}_errors.txt" | cut -c1-220
+  kill $lp 2>/dev/null
+  adb logcat -d | grep -E "E/flutter|ADDA error|Another exception" | head -40 > "shots/${scale}_errors.txt"
+  echo "== errors ($scale):"; cut -c1-220 "shots/${scale}_errors.txt"
   adb shell am force-stop $pkg
 done
 exit 0
