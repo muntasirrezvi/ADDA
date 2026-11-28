@@ -41,7 +41,7 @@ class _FxClockHostState extends State<FxClockHost> with SingleTickerProviderStat
       _last = d;
       _t.value += dt.clamp(0, .1);
     })
-      ..start();
+      ;// BISECT no start
   }
 
   @override
@@ -52,7 +52,7 @@ class _FxClockHostState extends State<FxClockHost> with SingleTickerProviderStat
   }
 
   @override
-  Widget build(BuildContext context) => FxClock(time: _t, child: widget.child);
+  Widget build(BuildContext context) => widget.child; // BISECT
 }
 
 /// Slow drifting gold dust and soft glows behind the home screen.
