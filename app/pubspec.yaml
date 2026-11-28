@@ -34,5 +34,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/games/
+    - assets/gifts/
     - assets/sfx/
     - shorebird.yaml

@@ -27,6 +27,10 @@ const giftLook = <String, (IconData, List<Color>)>{
   'firework': (Icons.celebration, [Color(0xFFFFD36B), Color(0xFFE6398F)]),
 };
 
+/// Gifts with bundled 3D art (assets/gifts/<id>.webp) and full-screen animations (anim_<id>.webp).
+const _bundledGifts = {'rose', 'coffee', 'kiss', 'perfume', 'teddy', 'snowflake', 'moon', 'firework', 'ring', 'crown', 'car', 'falcon', 'yacht', 'jet', 'palace', 'dragon', 'phoenix'};
+const _animatedGifts = {'ring', 'crown', 'car', 'falcon', 'yacht', 'jet', 'palace', 'dragon', 'phoenix'};
+
 class GiftIcon extends StatelessWidget {
   const GiftIcon({super.key, required this.gift, this.size = 44});
   final Map<String, dynamic> gift;
@@ -34,25 +38,34 @@ class GiftIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final url = gift['icon_url'] as String?;
-    final look = giftLook[gift['id']] ?? (Icons.card_giftcard, const [C.gold, C.gold2]);
-    final art = ShaderMask(
+    final id = '${gift['id']}';
+    final look = giftLook[id] ?? (Icons.card_giftcard, const [C.gold, C.gold2]);
+    final fallback = ShaderMask(
       shaderCallback: (r) => LinearGradient(colors: look.$2, begin: Alignment.topLeft, end: Alignment.bottomRight).createShader(r),
       child: Icon(look.$1, size: size, color: Colors.white),
     );
-    if (url == null || url.isEmpty) return art;
-    return CachedNetworkImage(imageUrl: url, width: size, height: size, fit: BoxFit.contain, errorWidget: (_, __, ___) => art);
+    if (url != null && url.isNotEmpty) {
+      return CachedNetworkImage(imageUrl: url, width: size, height: size, fit: BoxFit.contain, errorWidget: (_, __, ___) => fallback);
+    }
+    if (_bundledGifts.contains(id)) {
+      return Image.asset('assets/gifts/$id.webp', width: size, height: size, fit: BoxFit.contain, filterQuality: FilterQuality.medium, errorBuilder: (_, __, ___) => fallback);
+    }
+    return fallback;
   }
 }
 
 class GiftShow {
-  GiftShow({required this.gift, required this.from, required this.to, required this.qty});
+  GiftShow({required this.gift, required this.from, required this.to, required this.qty, this.fromId, this.toId});
   final Map<String, dynamic> gift;
   final String from;
   final String to;
+  final String? fromId;
+  final String? toId;
   final int qty;
 }
 
-/// Full-screen gift animations, played one after another.
+/// Gift animations, played one after another: small gifts fly to the person who receives them;
+/// big gifts take over the room with a 3D animation.
 class GiftStage extends StatefulWidget {
   const GiftStage({super.key, required this.controller});
   final GiftStageController controller;
@@ -63,6 +76,10 @@ class GiftStage extends StatefulWidget {
 class GiftStageController {
   _GiftStageState? _s;
   final _queue = <GiftShow>[];
+
+  /// Where a person sits on screen (global coordinates), if they are on a seat.
+  Offset? Function(String uid)? seatPos;
+
   void play(GiftShow g) {
     if (_queue.length > 20) return; // drop floods
     _queue.add(g);
@@ -72,11 +89,13 @@ class GiftStageController {
 
 class _GiftStageState extends State<GiftStage> with TickerProviderStateMixin {
   GiftShow? _now;
-  late final AnimationController _a = AnimationController(vsync: this, duration: const Duration(milliseconds: 3200));
+  late final AnimationController _a = AnimationController(vsync: this, duration: const Duration(milliseconds: 3200), animationBehavior: AnimationBehavior.preserve);
   final _rnd = Random();
   List<_P> _ps = [];
   String _theme = 'sparkle';
   bool _big = false;
+  Offset? _target;
+  int _playId = 0;
 
   @override
   void initState() {
@@ -94,12 +113,19 @@ class _GiftStageState extends State<GiftStage> with TickerProviderStateMixin {
   void _next() {
     if (!mounted || _now != null || widget.controller._queue.isEmpty) return;
     final g = widget.controller._queue.removeAt(0);
+    final id = '${g.gift['id']}';
     final price = (g.gift['price'] as num?)?.toInt() ?? 0;
-    final big = price >= 1000000;
-    _ps = List.generate(big ? 110 : 60, (_) => _P(_rnd));
-    _theme = _themeFor('${g.gift['id']}');
+    final big = price >= 1000000 || (g.gift['animation_url'] as String? ?? '').isNotEmpty;
+    _ps = List.generate(big ? 120 : 40, (_) => _P(_rnd));
+    _theme = _themeFor(id);
     _big = big;
-    _a.duration = Duration(milliseconds: big ? 4200 : 2800);
+    _playId++;
+    // where the small gift flies to (local coordinates of this stage)
+    _target = null;
+    final box = context.findRenderObject() as RenderBox?;
+    final pos = g.toId == null ? null : widget.controller.seatPos?.call(g.toId!);
+    if (box != null && pos != null) _target = box.globalToLocal(pos);
+    _a.duration = Duration(milliseconds: big ? (_animatedGifts.contains(id) ? 4200 : 3600) : 1900);
     setState(() => _now = g);
     _a.forward(from: 0);
   }
@@ -115,76 +141,178 @@ class _GiftStageState extends State<GiftStage> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final g = _now;
     if (g == null) return const SizedBox.shrink();
-    final anim = g.gift['animation_url'] as String?;
-    final look = giftLook[g.gift['id']] ?? (Icons.card_giftcard, const [C.gold, C.gold2]);
     return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: _a,
-        builder: (context, _) {
-          final t = _a.value;
-          final fadeIn = Curves.easeOut.transform((t / .15).clamp(0.0, 1.0));
-          final fadeOut = 1 - Curves.easeIn.transform(((t - .82) / .18).clamp(0.0, 1.0));
-          final scale = Curves.elasticOut.transform((t / .45).clamp(0.0, 1.0));
-          return Opacity(
-            opacity: (fadeIn * fadeOut).clamp(0.0, 1.0),
-            child: Stack(fit: StackFit.expand, children: [
-              Container(decoration: BoxDecoration(gradient: RadialGradient(colors: [look.$2.first.withValues(alpha: .35), Colors.black.withValues(alpha: .55)], radius: .9))),
-              if (_big) CustomPaint(painter: _Rays(t, look.$2.first)),
-              CustomPaint(painter: _Burst(_ps, t, look.$2, _theme)),
-              Center(
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Transform(
-                    alignment: Alignment.center,
-                    transform: Matrix4.identity()
-                      ..setEntry(3, 2, 0.0018)
-                      ..rotateY((1 - Curves.easeOutCubic.transform((t / .4).clamp(0.0, 1.0))) * pi * 1.6 + sin(t * pi * 4) * .12)
-                      ..rotateX(sin(t * pi * 3) * .08)
-                      ..scale(.2 + .8 * scale),
-                    child: Container(
-                      decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: look.$2.first.withValues(alpha: .55), blurRadius: 60, spreadRadius: 10)]),
-                      child: SizedBox(
-                        width: 240,
-                        height: 240,
-                        child: (anim != null && anim.endsWith('.json'))
-                            ? Lottie.network(anim, repeat: false, errorBuilder: (_, __, ___) => GiftIcon(gift: g.gift, size: 200))
-                            : (anim != null && (anim.endsWith('.webp') || anim.endsWith('.gif') || anim.endsWith('.png')))
-                                ? CachedNetworkImage(imageUrl: anim, errorWidget: (_, __, ___) => GiftIcon(gift: g.gift, size: 200))
-                                : ShaderMask(
-                                    blendMode: BlendMode.srcATop,
-                                    shaderCallback: (r) => LinearGradient(
-                                      begin: Alignment(-1 + t * 4 - 1.2, -1),
-                                      end: Alignment(-1 + t * 4 - .4, 1),
-                                      colors: [Colors.transparent, Colors.white.withValues(alpha: .75), Colors.transparent],
-                                    ).createShader(r),
-                                    child: GiftIcon(gift: g.gift, size: 200),
-                                  ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(30), border: Border.all(color: C.gold.withValues(alpha: .6))),
-                    child: Text.rich(
-                      TextSpan(children: [
-                        TextSpan(text: g.from, style: const TextStyle(color: C.gold, fontWeight: FontWeight.w700)),
-                        const TextSpan(text: '  sent  '),
-                        TextSpan(text: '${g.gift['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                        TextSpan(text: ' ×${g.qty}', style: serif(18, color: C.gold)),
-                        const TextSpan(text: '  to  '),
-                        TextSpan(text: g.to, style: const TextStyle(color: C.gold, fontWeight: FontWeight.w700)),
-                      ]),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ]),
-              ),
-            ]),
-          );
-        },
+      child: LayoutBuilder(builder: (context, box) {
+        return AnimatedBuilder(
+          animation: _a,
+          builder: (context, _) => _big ? _bigShow(g, box.biggest) : _flyShow(g, box.biggest),
+        );
+      }),
+    );
+  }
+
+  // ---------------------------------------------------------------- small gifts: fly to the receiver
+  Widget _flyShow(GiftShow g, Size size) {
+    final t = _a.value;
+    final start = Offset(size.width / 2, size.height - 90);
+    final end = _target ?? Offset(size.width / 2, size.height * .42);
+    final mid = Offset((start.dx + end.dx) / 2 + (end.dx > start.dx ? -60 : 60), min(start.dy, end.dy) - 120);
+    // 0-.15 pop up · .15-.7 fly along an arc · .7-1 burst at the receiver
+    final fly = Curves.easeInOutCubic.transform(((t - .15) / .55).clamp(0.0, 1.0));
+    Offset bez(double u) => start * ((1 - u) * (1 - u)) + mid * (2 * u * (1 - u)) + end * (u * u);
+    final p = bez(fly);
+    final pop = Curves.elasticOut.transform((t / .22).clamp(0.0, 1.0));
+    final scale = t < .15 ? .3 + 1.2 * pop : (t < .7 ? 1.5 - .7 * fly : .8 * (1 - ((t - .7) / .3).clamp(0.0, 1.0)));
+    final burst = ((t - .66) / .34).clamp(0.0, 1.0);
+    const size0 = 90.0;
+    return Stack(children: [
+      // glowing trail
+      if (t > .15 && t < .75)
+        CustomPaint(size: size, painter: _Trail([for (var k = 0; k < 10; k++) bez((fly - k * .035).clamp(0.0, 1.0))], _colorFor(g))),
+      if (burst > 0) Positioned.fill(child: CustomPaint(painter: _Burst.at(_ps, burst, giftLook[g.gift['id']]?.$2 ?? const [C.gold, C.gold2], 'sparkle', center: end, radius: 110))),
+      Positioned(
+        left: p.dx - size0 / 2,
+        top: p.dy - size0 / 2,
+        child: Transform.scale(scale: scale.clamp(0.0, 2.0), child: SizedBox(width: size0, height: size0, child: GiftIcon(gift: g.gift, size: size0))),
+      ),
+      // combo bar on the left like a live stream
+      Positioned(left: 8, top: size.height * .52, child: _comboBar(g, t)),
+    ]);
+  }
+
+  Widget _comboBar(GiftShow g, double t) {
+    final inT = Curves.easeOutBack.transform((t / .2).clamp(0.0, 1.0));
+    final outT = ((t - .85) / .15).clamp(0.0, 1.0);
+    return Opacity(
+      opacity: (1 - outT).clamp(0.0, 1.0),
+      child: Transform.translate(
+        offset: Offset(-260 * (1 - inT), 0),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(4, 4, 10, 4),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(26),
+            gradient: const LinearGradient(colors: [Color(0xEE6A1B9A), Color(0x006A1B9A)]),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 150),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(g.from, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
+                Text('to ${g.to}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFFFE07A), fontSize: 11)),
+              ]),
+            ),
+            const SizedBox(width: 6),
+            GiftIcon(gift: g.gift, size: 36),
+            const SizedBox(width: 4),
+            Transform.scale(
+              scale: 1 + .4 * (1 - Curves.easeOut.transform(((t - .2) / .2).clamp(0.0, 1.0))),
+              child: Text('×${g.qty}', style: const TextStyle(color: Color(0xFFFFD54F), fontSize: 24, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, shadows: [Shadow(color: Colors.black54, blurRadius: 4)])),
+            ),
+          ]),
+        ),
       ),
     );
   }
+
+  // ---------------------------------------------------------------- big gifts: the whole room
+  Widget _bigShow(GiftShow g, Size size) {
+    final t = _a.value;
+    final id = '${g.gift['id']}';
+    final colors = giftLook[id]?.$2 ?? const [C.gold, C.gold2];
+    final fadeIn = Curves.easeOut.transform((t / .1).clamp(0.0, 1.0));
+    final fadeOut = 1 - Curves.easeIn.transform(((t - .86) / .14).clamp(0.0, 1.0));
+    final anim = g.gift['animation_url'] as String?;
+    final title = Curves.elasticOut.transform(((t - .08) / .4).clamp(0.0, 1.0));
+    Widget hero;
+    if (anim != null && anim.endsWith('.json')) {
+      hero = Lottie.network(anim, repeat: false, errorBuilder: (_, __, ___) => GiftIcon(gift: g.gift, size: 260));
+    } else if (anim != null && anim.isNotEmpty) {
+      hero = CachedNetworkImage(imageUrl: anim, errorWidget: (_, __, ___) => GiftIcon(gift: g.gift, size: 260));
+    } else if (_animatedGifts.contains(id)) {
+      // pre-rendered 3D animation; a new key restarts it every time
+      hero = Image.asset('assets/gifts/anim_$id.webp', key: ValueKey('anim$_playId'), fit: BoxFit.contain, gaplessPlayback: false, errorBuilder: (_, __, ___) => GiftIcon(gift: g.gift, size: 260));
+    } else {
+      final scale = Curves.elasticOut.transform((t / .45).clamp(0.0, 1.0));
+      hero = Transform(
+        alignment: Alignment.center,
+        transform: Matrix4.identity()
+          ..setEntry(3, 2, 0.0018)
+          ..rotateY((1 - Curves.easeOutCubic.transform((t / .4).clamp(0.0, 1.0))) * pi * 1.6 + sin(t * pi * 4) * .12)
+          ..scale(.2 + .8 * scale),
+        child: GiftIcon(gift: g.gift, size: 260),
+      );
+    }
+    final heroSize = min(size.width * .95, size.height * .55);
+    return Opacity(
+      opacity: (fadeIn * fadeOut).clamp(0.0, 1.0),
+      child: Stack(fit: StackFit.expand, children: [
+        Container(decoration: BoxDecoration(gradient: RadialGradient(colors: [colors.first.withValues(alpha: .38), Colors.black.withValues(alpha: .7)], radius: .95))),
+        CustomPaint(painter: _Rays(t, colors.first)),
+        CustomPaint(painter: _Burst(_ps, t, colors, _theme)),
+        Align(
+          alignment: const Alignment(0, -.12),
+          child: Container(
+            width: heroSize,
+            height: heroSize,
+            decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: [colors.first.withValues(alpha: .35), colors.first.withValues(alpha: 0)])),
+            child: hero,
+          ),
+        ),
+        // gift name in metallic letters
+        Align(
+          alignment: const Alignment(0, .5),
+          child: Transform.scale(scale: .3 + .7 * title, child: _metalTitle('${g.gift['name']}', t)),
+        ),
+        // who sent it to whom
+        Align(
+          alignment: const Alignment(0, .7),
+          child: Container(
+            constraints: BoxConstraints(maxWidth: size.width - 40),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xCC3A0A12), Color(0xCC8A0E12), Color(0xCC3A0A12)]),
+              borderRadius: BorderRadius.circular(30),
+              border: Border.all(color: const Color(0xFFFFC94A), width: 1.5),
+            ),
+            child: Text.rich(
+              TextSpan(children: [
+                TextSpan(text: g.from, style: const TextStyle(color: Color(0xFFFFE07A), fontWeight: FontWeight.w800)),
+                const TextSpan(text: '  sent  '),
+                TextSpan(text: '${g.gift['name']} ×${g.qty}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                const TextSpan(text: '  to  '),
+                TextSpan(text: g.to, style: const TextStyle(color: Color(0xFFFFE07A), fontWeight: FontWeight.w800)),
+              ]),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _metalTitle(String text, double t) => MetalText(text, size: 46, sweep: ((t - .25) / .5).clamp(0.0, 1.0));
+
+  Color _colorFor(GiftShow g) => (giftLook[g.gift['id']]?.$2 ?? const [C.gold]).first;
+}
+
+class _Trail extends CustomPainter {
+  _Trail(this.pts, this.color);
+  final List<Offset> pts;
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (var i = 0; i < pts.length; i++) {
+      final f = 1 - i / pts.length;
+      canvas.drawCircle(pts[i], 16 * f, Paint()..color = color.withValues(alpha: .25 * f)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8));
+      canvas.drawCircle(pts[i], 4 * f, Paint()..color = Colors.white.withValues(alpha: .8 * f));
+    }
+  }
+
+  @override
+  bool shouldRepaint(_Trail o) => true;
 }
 
 class _P {
@@ -236,19 +364,22 @@ class _Rays extends CustomPainter {
 }
 
 class _Burst extends CustomPainter {
-  _Burst(this.ps, this.t, this.colors, [this.theme = 'sparkle']);
+  _Burst(this.ps, this.t, this.colors, [this.theme = 'sparkle', this.center, this.radius]);
+  _Burst.at(this.ps, this.t, this.colors, this.theme, {this.center, this.radius});
   final List<_P> ps;
   final double t;
   final List<Color> colors;
   final String theme;
+  final Offset? center;
+  final double? radius;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (theme == 'petals') return _petals(canvas, size, const [Color(0xFFFF4D6D), Color(0xFFFF8FA3), Color(0xFFC9184A)]);
     if (theme == 'snow') return _fall(canvas, size, const [Colors.white, Color(0xFFDDF3FF)], round: true);
     if (theme == 'fire') return _embers(canvas, size);
-    final c = size.center(Offset.zero);
-    final maxR = size.shortestSide * .75;
+    final c = center ?? size.center(Offset.zero);
+    final maxR = radius ?? size.shortestSide * .75;
     final palette = [...colors, C.gold];
     for (final p in ps) {
       final d = Curves.easeOutCubic.transform(t) * maxR * p.speed;
@@ -304,4 +435,44 @@ class _Burst extends CustomPainter {
 
   @override
   bool shouldRepaint(_Burst old) => true;
+}
+
+
+/// Gold metallic letters drawn with gradient paint (no extra layers, light on cheap phones).
+class MetalText extends StatelessWidget {
+  const MetalText(this.text, {super.key, this.size = 46, this.sweep = -1, this.tint = const Color(0xFFFFD54F)});
+  final String text;
+  final double size;
+  final double sweep;
+  final Color tint;
+  @override
+  Widget build(BuildContext context) {
+    final base = TextStyle(fontSize: size, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, letterSpacing: .5, height: 1.1);
+    final w = text.length * size * .62;
+    final rect = Rect.fromLTWH(0, 0, w, size * 1.2);
+    final gold = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [const Color(0xFFFFFDF0), tint, const Color(0xFFB8741A), const Color(0xFFFFE9A8), const Color(0xFF8A5A0A)],
+      stops: const [0, .35, .55, .7, 1],
+    ).createShader(rect);
+    return FittedBox(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Stack(children: [
+          Text(text, style: base.copyWith(foreground: Paint()..style = PaintingStyle.stroke..strokeWidth = size * .13..color = const Color(0xFF3A1A00))),
+          Text(text, style: base.copyWith(foreground: Paint()..shader = gold)),
+          if (sweep >= 0 && sweep <= 1)
+            Text(text,
+                style: base.copyWith(
+                    foreground: Paint()
+                      ..shader = LinearGradient(
+                        begin: Alignment(-1.5 + sweep * 3, -.4),
+                        end: Alignment(-1 + sweep * 3, .4),
+                        colors: [Colors.white.withValues(alpha: 0), Colors.white.withValues(alpha: .85), Colors.white.withValues(alpha: 0)],
+                      ).createShader(rect))),
+        ]),
+      ),
+    );
+  }
 }

@@ -13,7 +13,7 @@ import '../services/api.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import 'wallet_tools.dart';
-import 'withdraw_screen.dart';
+import 'history_screen.dart';
 
 const methodNames = {'bkash': 'bKash', 'nagad': 'Nagad', 'rocket': 'Rocket', 'upay': 'Upay', 'bank': 'Bank transfer', 'usdt': 'USDT (TRC20)'};
 const methodColors = {
@@ -132,7 +132,7 @@ class _WalletScreenState extends State<WalletScreen> {
         IconButton(
           tooltip: 'History',
           icon: const Icon(Icons.receipt_long),
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TopupHistoryScreen())),
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryScreen())),
         ),
       ]),
       body: RefreshIndicator(
@@ -162,7 +162,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   const Text('DIAMONDS', style: TextStyle(color: C.mute, letterSpacing: 2, fontSize: 11)),
                   const SizedBox(height: 4),
                   ValueListenableBuilder<int>(valueListenable: App.i.diamonds, builder: (_, d, __) => FittedBox(child: CoinText(grouped(d), size: 26, diamond: true))),
-                  const Text('Earned from gifts · can withdraw', style: TextStyle(color: C.mute, fontSize: 11)),
+                  const Text('Earned from gifts · send to friends', style: TextStyle(color: C.mute, fontSize: 11)),
                 ]),
               ),
             ]),
@@ -179,7 +179,7 @@ class _WalletScreenState extends State<WalletScreen> {
               _Action(icon: Icons.tune, label: 'Custom\namount', color: const Color(0xFFE0A93A), onTap: () => showCustomTopup(context, _methods)),
               _Action(icon: Icons.swap_vert, label: 'Exchange', color: const Color(0xFF7FB0FF), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ExchangeScreen()))),
               _Action(icon: Icons.send, label: 'Send to\nfriend', color: const Color(0xFF3DDC84), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SendScreen()))),
-              _Action(icon: Icons.account_balance, label: 'Withdraw', color: const Color(0xFFE0485A), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EarningsScreen()))),
+              _Action(icon: Icons.receipt_long, label: 'History', color: const Color(0xFFE0485A), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryScreen()))),
             ],
           ),
           const Section('Recharge coins'),

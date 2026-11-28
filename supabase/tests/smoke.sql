@@ -246,16 +246,11 @@ select request_withdrawal(6250000, 'bkash', '01700000000', 'Test');
 reset role;
 update profiles set verified = true, created_at = now() - interval '30 days' where id = '00000000-0000-0000-0000-00000000000c';
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
-select (withdraw_status())->'can' as can_now;
-select diamonds, amount_usd, amount_bdt, method, status from request_withdrawal(6250000, 'bkash', '01700000000', 'Test');
-select (withdraw_status())->'can' as can_after_one;
+-- withdrawals are switched off: every request must fail
 \set ON_ERROR_STOP 0
-select request_withdrawal(6250000, 'bkash', '01700000000');
+select request_withdrawal(6250000, 'bkash', '01700000000', 'Test');
 \set ON_ERROR_STOP 1
-reset role;
-select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
-select admin_update_payout((select max(id) from payouts), 'paid', null, 'TRX123');
-select status, paid_ref from payouts order by id desc limit 1;
+select count(*) as payouts_after from payouts;
 -- daily reward: day 1 today, then simulate a streak
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000d');
 select checkin_status()->'days' as days;

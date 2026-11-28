@@ -8,6 +8,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import 'casino_kit.dart';
 import 'games_kit.dart';
+import '../widgets/gift_fx.dart' show MetalText;
 
 /// Lucky 777: three reels, three rows, five lines. The result comes from the server. Coins only.
 class Lucky777 extends StatefulWidget {
@@ -42,8 +43,8 @@ class _Lucky777State extends State<Lucky777> with TickerProviderStateMixin {
   List<String> _grid = ['bell', 'bell', 'bell', 'seven', 'seven', 'seven', 'grape', 'grape', 'grape'];
   List<Map> _lines = [];
   late List<List<String>> _strips = List.generate(3, (c) => [_grid[c], _grid[3 + c], _grid[6 + c]]);
-  late final List<AnimationController> _reels = List.generate(3, (_) => AnimationController(vsync: this, duration: const Duration(milliseconds: 1200)));
-  late final AnimationController _big = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600));
+  late final List<AnimationController> _reels = List.generate(3, (_) => AnimationController(vsync: this, duration: const Duration(milliseconds: 1200), animationBehavior: AnimationBehavior.preserve));
+  late final AnimationController _big = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600), animationBehavior: AnimationBehavior.preserve);
   Timer? _infoTimer;
 
   int get _bet => _bets[_betIx];
@@ -51,6 +52,7 @@ class _Lucky777State extends State<Lucky777> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    App.i.holdCoins(true);
     _betIx = _bets.indexWhere((b) => b >= widget.minBet).clamp(0, _bets.length - 1);
     _loadInfo();
     _infoTimer = Timer.periodic(const Duration(seconds: 15), (_) => _loadInfo());
@@ -58,6 +60,7 @@ class _Lucky777State extends State<Lucky777> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    App.i.holdCoins(false);
     _auto = false;
     _infoTimer?.cancel();
     for (final r in _reels) {
@@ -141,11 +144,11 @@ class _Lucky777State extends State<Lucky777> with TickerProviderStateMixin {
       _chests = Map<String, dynamic>.from(r['chests'] as Map);
       _spinning = false;
     });
-    App.i.coins.value = (r['coins'] as num).toInt();
     if (payout > 0) {
       Sfx.play('win');
-      Future.delayed(const Duration(milliseconds: 250), () => Sfx.play('coin'));
+      Future.delayed(const Duration(milliseconds: 800), () => Sfx.play('coin'));
     }
+    coinsAfterReveal((r['coins'] as num).toInt(), delayMs: r['big'] == true ? 1800 : (payout > 0 ? 800 : 0));
     if (r['big'] == true) {
       _big.forward(from: 0);
       _loadInfo();
@@ -215,7 +218,15 @@ class _Lucky777State extends State<Lucky777> with TickerProviderStateMixin {
           child: Row(children: [
             art('coin', size: 26),
             const SizedBox(width: 8),
-            ValueListenableBuilder<int>(valueListenable: App.i.coins, builder: (_, c, __) => Text(grouped(c), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18))),
+            ValueListenableBuilder<int>(
+              valueListenable: App.i.coins,
+              builder: (_, c, __) => TweenAnimationBuilder<double>(
+                tween: Tween(end: c.toDouble()),
+                duration: const Duration(milliseconds: 900),
+                curve: Curves.easeOutCubic,
+                builder: (_, v, __) => Text(grouped(v.round()), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
+              ),
+            ),
           ]),
         ),
         const Spacer(),
@@ -370,10 +381,7 @@ class _Lucky777State extends State<Lucky777> with TickerProviderStateMixin {
               child: Transform.scale(
                 scale: .3 + .7 * scale,
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  ShaderMask(
-                    shaderCallback: (r) => const LinearGradient(colors: [Color(0xFFFFF3B0), Color(0xFFFFC107), Color(0xFFFF8F00)]).createShader(r),
-                    child: const Text('BIG WIN', style: TextStyle(color: Colors.white, fontSize: 64, fontWeight: FontWeight.w900, letterSpacing: 2, shadows: [Shadow(color: Colors.black87, blurRadius: 12)])),
-                  ),
+                  MetalText('BIG WIN', size: 64, sweep: ((t - .2) / .5).clamp(0.0, 1.0)),
                   CountUp(_lastWin, size: 34),
                 ]),
               ),

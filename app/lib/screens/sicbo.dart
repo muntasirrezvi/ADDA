@@ -37,6 +37,7 @@ class _SicBoGameState extends State<SicBoGame> {
   @override
   void initState() {
     super.initState();
+    App.i.holdCoins(true);
     _chip = casinoChips.firstWhere((c) => c >= math.max(widget.minBet, 10000), orElse: () => casinoChips.first);
     App.i.rpc('game_chests_info', {'p_game': 'sicbo'}).then((r) {
       if (mounted) setState(() => _chests = Map<String, dynamic>.from(r as Map));
@@ -72,6 +73,8 @@ class _SicBoGameState extends State<SicBoGame> {
       _lastWin = 0;
     });
     Sfx.play('dice');
+    final stake = _total;
+    App.i.coins.value -= stake;
     final anim = Timer.periodic(const Duration(milliseconds: 80), (_) {
       if (mounted) setState(() => _frame = _rnd.nextInt(8));
     });
@@ -88,12 +91,13 @@ class _SicBoGameState extends State<SicBoGame> {
     anim.cancel();
     if (!mounted) return;
     if (r == null) {
+      App.i.coins.value += stake;
       setState(() => _rolling = false);
       return;
     }
     final res = r;
     final payout = (r['payout'] as num).toInt();
-    App.i.coins.value = (r['coins'] as num).toInt();
+    coinsAfterReveal((r['coins'] as num).toInt(), delayMs: payout > 0 ? 900 : 0);
     setState(() {
       _dice = [for (final d in res['dice'] as List) (d as num).toInt()];
       _winKeys = (res['wins'] as Map).keys.map((e) => '$e').toSet();
@@ -109,6 +113,12 @@ class _SicBoGameState extends State<SicBoGame> {
   }
 
   @override
+  void dispose() {
+    App.i.holdCoins(false);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final sum = _dice.fold(0, (a, b) => a + b);
     final triple = _dice[0] == _dice[1] && _dice[1] == _dice[2];
@@ -121,7 +131,7 @@ class _SicBoGameState extends State<SicBoGame> {
           IconButton(icon: const Icon(Icons.help_outline), onPressed: _help),
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: Center(child: ValueListenableBuilder<int>(valueListenable: App.i.coins, builder: (_, c, __) => CoinText(grouped(c)))),
+            child: const Center(child: LiveCoins()),
           ),
         ],
       ),

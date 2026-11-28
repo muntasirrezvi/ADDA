@@ -36,6 +36,7 @@ class _MinesGameState extends State<MinesGame> {
   @override
   void initState() {
     super.initState();
+    App.i.holdCoins(true);
     _bet = math.max(widget.minBet, 10000);
     _load();
   }
@@ -127,6 +128,12 @@ class _MinesGameState extends State<MinesGame> {
   }
 
   @override
+  void dispose() {
+    App.i.holdCoins(false);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final g = _g;
     final mult = (g?['mult'] as num? ?? 1).toDouble();
@@ -141,7 +148,7 @@ class _MinesGameState extends State<MinesGame> {
           IconButton(icon: const Icon(Icons.help_outline), onPressed: _help),
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: Center(child: ValueListenableBuilder<int>(valueListenable: App.i.coins, builder: (_, c, __) => CoinText(grouped(c)))),
+            child: const Center(child: LiveCoins()),
           ),
         ],
       ),
@@ -261,12 +268,19 @@ class _MinesGameState extends State<MinesGame> {
           borderRadius: BorderRadius.circular(10),
           gradient: revealed
               ? LinearGradient(colors: bomb ? (_boomTile == i ? const [Color(0xFFFF5252), Color(0xFF8A0E12)] : const [Color(0xFF3A1A2A), Color(0xFF200A14)]) : const [Color(0xFF1B3A6A), Color(0xFF0E2248)])
-              : const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF4A6FB0), Color(0xFF2A4A86)]),
+              : const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF6E95D8), Color(0xFF3A62A8), Color(0xFF223E78)], stops: [0, .45, 1]),
           border: Border.all(color: picked ? const Color(0xFFFFE07A) : Colors.white24, width: picked ? 2 : 1),
           boxShadow: revealed ? null : const [BoxShadow(color: Colors.black45, offset: Offset(0, 3), blurRadius: 3)],
         ),
         child: content == null
-            ? null
+            ? Container(
+                margin: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.center, colors: [Colors.white.withValues(alpha: .28), Colors.white.withValues(alpha: 0)]),
+                ),
+                child: const Center(child: Icon(Icons.diamond_outlined, color: Color(0x33FFFFFF), size: 18)),
+              )
             : Opacity(opacity: picked || bomb ? 1 : .45, child: TweenAnimationBuilder<double>(
                 tween: Tween(begin: .3, end: 1),
                 duration: const Duration(milliseconds: 300),

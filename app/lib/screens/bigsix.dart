@@ -40,7 +40,7 @@ class _BigSixGameState extends State<BigSixGame> with SingleTickerProviderStateM
   String? _hit;
   int _lastWin = 0;
   double _angle = 0; // wheel rotation in turns
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 5200));
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 5200), animationBehavior: AnimationBehavior.preserve);
   Animation<double>? _spin;
 
   int get _total => _bets.values.fold(0, (a, b) => a + b);
@@ -48,12 +48,14 @@ class _BigSixGameState extends State<BigSixGame> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
+    App.i.holdCoins(true);
     _chip = casinoChips.firstWhere((c) => c >= math.max(widget.minBet, 10000), orElse: () => casinoChips.first);
     _load();
   }
 
   @override
   void dispose() {
+    App.i.holdCoins(false);
     _c.dispose();
     super.dispose();
   }
@@ -100,10 +102,13 @@ class _BigSixGameState extends State<BigSixGame> with SingleTickerProviderStateM
       _hit = null;
       _lastWin = 0;
     });
+    final stake = _total;
+    App.i.coins.value -= stake;
     Map<String, dynamic> r;
     try {
       r = Map<String, dynamic>.from(await App.i.rpc('bigsix_spin', {'p_bets': _bets}) as Map);
     } catch (e) {
+      App.i.coins.value += stake;
       if (mounted) {
         toast(context, errText(e), bad: true);
         setState(() => _spinning = false);
@@ -133,7 +138,7 @@ class _BigSixGameState extends State<BigSixGame> with SingleTickerProviderStateM
     _spin!.removeListener(tick);
     if (!mounted) return;
     final payout = (r['payout'] as num).toInt();
-    App.i.coins.value = (r['coins'] as num).toInt();
+    coinsAfterReveal((r['coins'] as num).toInt(), delayMs: payout > 0 ? 900 : 0);
     setState(() {
       _angle = end;
       _hit = '${r['segment']}';
@@ -159,7 +164,7 @@ class _BigSixGameState extends State<BigSixGame> with SingleTickerProviderStateM
           IconButton(icon: const Icon(Icons.help_outline), onPressed: _help),
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: Center(child: ValueListenableBuilder<int>(valueListenable: App.i.coins, builder: (_, c, __) => CoinText(grouped(c)))),
+            child: const Center(child: LiveCoins()),
           ),
         ],
       ),

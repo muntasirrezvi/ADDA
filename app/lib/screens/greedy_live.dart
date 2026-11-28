@@ -107,6 +107,7 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    App.i.holdCoins(true);
     _chip = casinoChips.firstWhere((c) => c >= widget.minBet, orElse: () => casinoChips.first);
     _load();
     _tick = Timer.periodic(const Duration(milliseconds: 250), (_) => _onTick());
@@ -115,6 +116,7 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    App.i.holdCoins(false);
     _tick?.cancel();
     _poll?.cancel();
     _pulse.dispose();
@@ -132,7 +134,8 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
       if (!mounted) return;
       _offset = (s['now_ms'] as num).toInt() - DateTime.now().millisecondsSinceEpoch;
       final c = s['coins'] as num?;
-      if (c != null) App.i.coins.value = c.toInt();
+      // during the show the balance already includes the win: hold it until the result is shown
+      if (c != null && (s['phase'] != 'show' || _showPopup)) App.i.coins.value = c.toInt();
       final newRound = (s['round'] as num).toInt() != _round;
       setState(() {
         _s = s;
@@ -185,8 +188,10 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
     final me = s['me'] as Map?;
     final win = (me?['win'] as num? ?? 0).toInt();
     Sfx.play(win > 0 ? 'win' : (me == null ? 'pop' : 'lose'));
-    if (win > 0) Future.delayed(const Duration(milliseconds: 300), () => Sfx.play('coin'));
+    if (win > 0) Future.delayed(const Duration(milliseconds: 900), () => Sfx.play('coin'));
     setState(() => _showPopup = true);
+    final c = s['coins'] as num?;
+    if (c != null) coinsAfterReveal(c.toInt(), delayMs: 900);
   }
 
   Future<void> _bet(String item) async {
@@ -230,7 +235,7 @@ class _GreedyLiveState extends State<GreedyLive> with TickerProviderStateMixin {
           IconButton(icon: const Icon(Icons.help_outline), onPressed: _help),
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: Center(child: ValueListenableBuilder<int>(valueListenable: App.i.coins, builder: (_, c, __) => CoinText(grouped(c)))),
+            child: const Center(child: LiveCoins()),
           ),
         ],
       ),
@@ -588,7 +593,7 @@ class _GroupButton extends StatelessWidget {
         onTap: onTap,
         child: Stack(clipBehavior: Clip.none, children: [
           Column(mainAxisSize: MainAxisSize.min, children: [
-            AspectRatio(aspectRatio: 1.3, child: art(food.art)),
+            AspectRatio(aspectRatio: 1.05, child: art(food.art)),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 3),
